@@ -1,8 +1,24 @@
 import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api.routes_resume import router as resume_router
-from app.core.config import FRONTEND_URL
+
+# Import router safely - if it fails, we'll create a minimal app
+try:
+    from app.api.routes_resume import router as resume_router
+    ROUTER_AVAILABLE = True
+except Exception as e:
+    # If router import fails, create a dummy router
+    from fastapi import APIRouter
+    resume_router = APIRouter()
+    ROUTER_AVAILABLE = False
+    import sys
+    print(f"Warning: Failed to import resume router: {str(e)}", file=sys.stderr)
+
+# Import config safely
+try:
+    from app.core.config import FRONTEND_URL
+except Exception:
+    FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
 
 app = FastAPI(
     title="AI Resume Builder",
@@ -37,7 +53,14 @@ app.add_middleware(
 )
 
 
-app.include_router(resume_router, prefix="/api/v1/resumes", tags=["resumes"])
+# Only include router if it was successfully imported
+if ROUTER_AVAILABLE:
+    app.include_router(resume_router, prefix="/api/v1/resumes", tags=["resumes"])
+else:
+    # Add a fallback route to indicate router is not available
+    @app.get("/api/v1/resumes/status")
+    def router_status():
+        return {"status": "Router not available", "error": "Failed to import resume router"}
 
 @app.get("/")
 def root():

@@ -1,9 +1,36 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Body
 from typing import Optional, Dict, Any
 import json
-from app.services import pdf_parser, pdf_exporter, langchain_ai, supabase_client
-from app.models.schemas import ResumeCreateRequest
 from pydantic import BaseModel
+
+# Import services safely - handle import errors gracefully
+try:
+    from app.services import pdf_parser, pdf_exporter, langchain_ai, supabase_client
+    SERVICES_AVAILABLE = True
+except Exception as e:
+    SERVICES_AVAILABLE = False
+    import sys
+    print(f"Warning: Failed to import services: {str(e)}", file=sys.stderr)
+    # Create dummy modules to prevent NameError
+    class DummyModule:
+        pass
+    pdf_parser = DummyModule()
+    pdf_exporter = DummyModule()
+    langchain_ai = DummyModule()
+    supabase_client = DummyModule()
+
+# Import schemas safely
+try:
+    from app.models.schemas import ResumeCreateRequest
+    SCHEMAS_AVAILABLE = True
+except Exception as e:
+    SCHEMAS_AVAILABLE = False
+    import sys
+    print(f"Warning: Failed to import schemas: {str(e)}", file=sys.stderr)
+    # Create a minimal BaseModel for ResumeCreateRequest
+    class ResumeCreateRequest(BaseModel):
+        name: str
+        email: Optional[str] = ""
 
 router = APIRouter()
 
