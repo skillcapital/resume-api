@@ -34,7 +34,10 @@ venv\Scripts\activate  # Windows
 # or
 source venv/bin/activate  # Linux/Mac
 
-# Install packages
+# Install packages for local development (includes all dependencies)
+pip install -r requirements-dev.txt
+
+# OR install only production dependencies (optimized for deployment)
 pip install -r requirements.txt
 ```
 

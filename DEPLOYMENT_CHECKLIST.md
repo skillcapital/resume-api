@@ -4,8 +4,9 @@
 
 1. **`vercel.json`** - Vercel configuration with Python runtime
 2. **`api/index.py`** - Serverless function entry point with error handling
-3. **`requirements-vercel.txt`** - Optimized dependencies (~40 packages)
-4. **`.vercelignore`** - Excludes unnecessary files (venv, cache, etc.)
+3. **`requirements.txt`** - Optimized dependencies for production (~40 packages)
+4. **`requirements-dev.txt`** - Full dependencies for local development (109 packages)
+5. **`.vercelignore`** - Excludes unnecessary files (venv, cache, etc.)
 
 ## 🔧 Vercel Dashboard Settings
 
@@ -14,7 +15,7 @@
 - **Root Directory**: `.` (leave empty or set to `.`)
 - **Build Command**: Leave **EMPTY**
 - **Output Directory**: Leave **EMPTY**
-- **Install Command**: `pip install -r requirements-vercel.txt`
+- **Install Command**: Leave empty (Vercel auto-detects `requirements.txt`)
 
 ### Environment Variables (Settings → Environment Variables):
 ```
@@ -30,7 +31,8 @@ SUPABASE_BUCKET_EXPORTS=exports
 - [ ] All files committed to Git
 - [ ] `vercel.json` is in root directory
 - [ ] `api/index.py` exists and exports `handler`
-- [ ] `requirements-vercel.txt` is in root directory
+- [ ] `requirements.txt` is in root directory (optimized for production)
+- [ ] `requirements-dev.txt` is in root directory (for local development)
 - [ ] `.vercelignore` is in root directory
 - [ ] Environment variables set in Vercel Dashboard
 - [ ] CORS updated in `app/main.py` with production frontend URL
@@ -89,20 +91,20 @@ After deployment, test these endpoints:
 
 2. **Verify Python Detection:**
    - Vercel should detect Python automatically
-   - If not, ensure `requirements-vercel.txt` exists in root
+   - If not, ensure `requirements.txt` exists in root
 
 3. **Check Function Size:**
    - Should be under 250MB
    - Check `.vercelignore` is excluding `venv/`
 
 4. **Import Errors:**
-   - Verify all imports in `requirements-vercel.txt`
+   - Verify all imports in `requirements.txt`
    - Check `api/index.py` can import `app.main`
 
 ### Common Issues:
 
 **Issue:** "Module not found"
-- **Solution:** Check `requirements-vercel.txt` has all dependencies
+- **Solution:** Check `requirements.txt` has all dependencies
 
 **Issue:** "Handler not found"
 - **Solution:** Ensure `api/index.py` exports `handler = app`
