@@ -10,21 +10,28 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure CORS with preview frontend URL
-allowed_origins = [
-    "https://supabase-skillcapital-lms-git-2c784d-tech-kdigitalais-projects.vercel.app",  # Preview frontend URL
-    FRONTEND_URL,  # From environment variable (for future production URL)
-    "http://localhost:3000",  # Local development
-    "http://127.0.0.1:3000",  # Alternative localhost
-]
-
-# Remove duplicates while preserving order
-allowed_origins = list(dict.fromkeys(allowed_origins))
+# Configure CORS - flexible for backend-only or with frontend
+# If FRONTEND_URL is set, use specific origins; otherwise allow all origins
+if FRONTEND_URL and FRONTEND_URL != "http://localhost:3000":
+    # Specific frontend URL provided - use restrictive CORS
+    allowed_origins = [
+        FRONTEND_URL,
+        "https://supabase-skillcapital-lms-git-2c784d-tech-kdigitalais-projects.vercel.app",  # Preview frontend URL
+        "http://localhost:3000",  # Local development
+        "http://127.0.0.1:3000",  # Alternative localhost
+    ]
+    # Remove duplicates while preserving order
+    allowed_origins = list(dict.fromkeys(allowed_origins))
+    allow_credentials = True
+else:
+    # No specific frontend URL - allow all origins (backend-only deployment)
+    allowed_origins = ["*"]
+    allow_credentials = False  # Cannot use credentials with wildcard origin
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,
-    allow_credentials=True,
+    allow_credentials=allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
