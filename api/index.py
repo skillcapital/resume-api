@@ -5,23 +5,35 @@ This file serves as the entry point for Vercel's Python runtime.
 import sys
 import os
 import traceback
-import logging
 
-# Configure logging to help debug issues
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+# Try to configure logging, but don't fail if it doesn't work
+try:
+    import logging
+    logging.basicConfig(level=logging.INFO)
+    logger = logging.getLogger(__name__)
+except Exception:
+    # If logging fails, create a dummy logger
+    class DummyLogger:
+        def info(self, *args, **kwargs): pass
+        def error(self, *args, **kwargs): pass
+    logger = DummyLogger()
 
 # Add parent directory to Python path
 # This allows importing the 'app' module from the project root
-current_dir = os.path.dirname(os.path.abspath(__file__))
-parent_dir = os.path.dirname(current_dir)
-
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
-
-logger.info(f"Python path: {sys.path}")
-logger.info(f"Current directory: {current_dir}")
-logger.info(f"Parent directory: {parent_dir}")
+try:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(current_dir)
+    
+    if parent_dir not in sys.path:
+        sys.path.insert(0, parent_dir)
+    
+    logger.info(f"Python path: {sys.path}")
+    logger.info(f"Current directory: {current_dir}")
+    logger.info(f"Parent directory: {parent_dir}")
+except Exception as e:
+    logger.error(f"Error setting up paths: {str(e)}")
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    parent_dir = os.path.dirname(current_dir)
 
 # Initialize handler variable
 handler = None
@@ -89,9 +101,31 @@ if handler is None:
         return {"statusCode": 500, "body": "Handler not initialized"}
     handler = default_handler
 
-logger.info(f"Final handler type: {type(handler)}")
+try:
+    logger.info(f"Final handler type: {type(handler)}")
+except Exception:
+    pass
 
 # Export handler for Vercel (required)
 # Vercel Python runtime looks for 'handler' or 'app'
+# Ensure these are always defined, even if initialization failed
+if handler is None:
+    # Last resort: create a minimal working handler
+    try:
+        from fastapi import FastAPI
+        from fastapi.responses import JSONResponse
+        handler = FastAPI(title="Minimal Handler")
+        @handler.get("/{full_path:path}")
+        @handler.get("/")
+        async def minimal_handler(full_path: str = "/"):
+            return JSONResponse(
+                status_code=500,
+                content={"error": "Handler initialization failed", "path": full_path}
+            )
+    except Exception:
+        # If even this fails, create a basic function handler
+        def handler(request):
+            return {"statusCode": 500, "body": "Critical initialization failure"}
+
 app = handler
 
