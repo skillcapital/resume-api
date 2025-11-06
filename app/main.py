@@ -1,6 +1,8 @@
+import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes_resume import router as resume_router
+from app.core.config import FRONTEND_URL
 
 app = FastAPI(
     title="AI Resume Builder",
@@ -8,29 +10,20 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Configure CORS for Next.js frontend
-#app.add_middleware(
-   # CORSMiddleware,
-    #allow_origins=[
-       # "http://localhost:3000",
-        #"http://127.0.0.1:3000",
-        #"http://localhost:3001",
-        #"http://127.0.0.1:3001",
-        #"http://localhost:8000",
-        #"http://127.0.0.1:8000",
-    #],
-    #allow_origin_regex=r"http://localhost:\d+",  # Allow any localhost port
-    #allow_credentials=True,
-    #allow_methods=["*"],
-    #allow_headers=["*"],
+# Configure CORS with preview frontend URL
+allowed_origins = [
+    "https://supabase-skillcapital-lms-git-2c784d-tech-kdigitalais-projects.vercel.app",  # Preview frontend URL
+    FRONTEND_URL,  # From environment variable (for future production URL)
+    "http://localhost:3000",  # Local development
+    "http://127.0.0.1:3000",  # Alternative localhost
+]
 
-    # Configure CORS for production frontend
+# Remove duplicates while preserving order
+allowed_origins = list(dict.fromkeys(allowed_origins))
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "https://your-frontend-domain.com",  # Add your production frontend URL
-        "http://localhost:3000",  # Keep for local development
-    ],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
