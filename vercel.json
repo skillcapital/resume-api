@@ -1,21 +1,15 @@
 {
-  "buildCommand": "echo 'No build needed for Python API'",
-  "outputDirectory": ".",
-  "installCommand": "pip install -r requirements-vercel.txt",
-  "functions": {
-    "api/index.py": {
-      "runtime": "python3.12",
-      "maxDuration": 60
-    }
-  },
-  "rewrites": [
+  "version": 2,
+  "builds": [
     {
-      "source": "/(.*)",
-      "destination": "/api/index.py"
+      "src": "api/index.py",
+      "use": "@vercel/python"
     }
   ],
-  "env": {
-    "PYTHONUNBUFFERED": "1"
-  }
+  "routes": [
+    {
+      "src": "/(.*)",
+      "dest": "api/index.py"
+    }
+  ]
 }
-
