@@ -35,9 +35,6 @@ Thumbs.db
 QUICKSTART.md
 SUPABASE_SETUP.sql
 
-# Development requirements (use requirements.txt for production)
-requirements-dev.txt
-
 # Frontend (if still present)
 frontend/
 node_modules/
