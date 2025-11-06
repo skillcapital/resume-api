@@ -4,12 +4,21 @@ from langchain_core.prompts import ChatPromptTemplate
 from app.core.config import OPENAI_API_KEY
 from typing import Dict, Any, Optional
 
-# Initialize LLM
-llm = ChatOpenAI(
-    model="gpt-4o-mini",
-    temperature=0.3,
-    api_key=OPENAI_API_KEY
-)
+# Initialize LLM lazily to avoid errors if API key is missing
+llm = None
+
+def get_llm():
+    """Get or create LLM instance."""
+    global llm
+    if llm is None:
+        if not OPENAI_API_KEY:
+            raise ValueError("OPENAI_API_KEY is not set. Please set it in environment variables.")
+        llm = ChatOpenAI(
+            model="gpt-4o-mini",
+            temperature=0.3,
+            api_key=OPENAI_API_KEY
+        )
+    return llm
 
 async def improve_resume(resume: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -66,7 +75,7 @@ Resume text:
 """)
         ])
         
-        chain = prompt_template | llm
+        chain = prompt_template | get_llm()
         
         response = await chain.ainvoke({"raw_text": raw_text})
         
@@ -136,7 +145,7 @@ Return tailored JSON with improved summary and relevant experiences only.
 """)
         ])
         
-        chain = prompt_template | llm
+        chain = prompt_template | get_llm()
         
         response = await chain.ainvoke({
             "raw_text": raw_text,
@@ -277,7 +286,7 @@ IMPORTANT:
         if job_description:
             job_context = f"\nJob Description to tailor for:\n{job_description}"
         
-        chain = prompt_template | llm
+        chain = prompt_template | get_llm()
         
         response = await chain.ainvoke({
             "name": personal_info.get("name", ""),
@@ -413,7 +422,7 @@ Provide specific, actionable recommendations to improve the score.
 """)
         ])
         
-        chain = prompt_template | llm
+        chain = prompt_template | get_llm()
         
         response = await chain.ainvoke({
             "resume_text": resume_text,
