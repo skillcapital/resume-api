@@ -1,0 +1,60 @@
+# Virtual Environment
+venv/
+env/
+.venv/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Documentation (keep README.md)
+QUICKSTART.md
+SUPABASE_SETUP.sql
+
+# Frontend (if still present)
+frontend/
+node_modules/
+
+# Test files
+tests/
+test_*.py
+*_test.py
+
+# Large files
+*.pdf
+*.docx
+
+# Temporary files
+tmp/
+temp/
+uploads/
+exports/
+
+# Git
+.git/
+.gitignore
+
