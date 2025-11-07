@@ -30,6 +30,10 @@ ENV/
 .env
 .env.local
 
+# Vercel CLI
+.vercel/
+.vercel
+
 # IDE
 .vscode/
 .idea/
