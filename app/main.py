@@ -2,39 +2,48 @@ import sys
 import traceback
 import os
 
-# Force flush output immediately
-sys.stdout.flush()
+# CRITICAL: Ensure handler is ALWAYS defined, even if everything fails
+handler = None
+app = None
+
+# Force immediate output
+sys.stderr.write("=== APP.MAIN STARTING ===\n")
 sys.stderr.flush()
 
-# Print Python path for debugging
-print("=" * 50, file=sys.stderr)
-print("Python path:", sys.path, file=sys.stderr)
-print("Current directory:", os.getcwd(), file=sys.stderr)
-print("=" * 50, file=sys.stderr)
-
-# Diagnostic: Catch fatal import errors
 try:
+    print("=" * 50, file=sys.stderr)
+    print("Python path:", sys.path, file=sys.stderr)
+    print("Current directory:", os.getcwd(), file=sys.stderr)
+    print("=" * 50, file=sys.stderr)
+    sys.stderr.flush()
+    
     print("Starting FastAPI imports...", file=sys.stderr)
+    sys.stderr.flush()
     
     from fastapi import FastAPI
     from fastapi.middleware.cors import CORSMiddleware
     from fastapi.responses import JSONResponse
     
     print("✅ FastAPI core imported", file=sys.stderr)
+    sys.stderr.flush()
     
     # Import router safely - if it fails, we'll create a minimal app
     try:
         print("Attempting to import router...", file=sys.stderr)
+        sys.stderr.flush()
         from app.api.routes_resume import router as resume_router
         ROUTER_AVAILABLE = True
         print("✅ Router imported successfully", file=sys.stderr)
+        sys.stderr.flush()
     except Exception as e:
         print("❌ Router import failed:", str(e), file=sys.stderr)
         traceback.print_exc(file=sys.stderr)
+        sys.stderr.flush()
         from fastapi import APIRouter
         resume_router = APIRouter()
         ROUTER_AVAILABLE = False
         print("⚠️ Using fallback router", file=sys.stderr)
+        sys.stderr.flush()
 
     app = FastAPI(
         title="AI Resume Builder",
@@ -42,7 +51,7 @@ try:
         version="1.0.0"
     )
 
-    # Configure CORS - allow all origins for backend-only deployment
+    # Configure CORS
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
@@ -55,6 +64,7 @@ try:
     if ROUTER_AVAILABLE:
         app.include_router(resume_router, prefix="/api/v1/resumes", tags=["resumes"])
         print("✅ Router included in app", file=sys.stderr)
+        sys.stderr.flush()
     else:
         @app.get("/api/v1/resumes/status")
         def router_status():
@@ -118,26 +128,53 @@ try:
         return JSONResponse(status_code=status_code, content=health)
 
     print("✅ FastAPI app initialized successfully", file=sys.stderr)
+    sys.stderr.flush()
 
 except Exception as e:
     print("❌ Fatal import error:", str(e), file=sys.stderr)
     traceback.print_exc(file=sys.stderr)
+    sys.stderr.flush()
+    
     # Create minimal error app
-    app = FastAPI(title="Error Handler")
-    @app.get("/{full_path:path}")
-    @app.get("/")
-    async def error_handler(full_path: str = "/"):
-        return JSONResponse(
-            status_code=500,
-            content={
-                "error": "Application initialization failed",
-                "message": str(e),
-                "traceback": traceback.format_exc()
-            }
-        )
+    try:
+        from fastapi import FastAPI
+        from fastapi.responses import JSONResponse
+        
+        app = FastAPI(title="Error Handler")
+        @app.get("/{full_path:path}")
+        @app.get("/")
+        async def error_handler(full_path: str = "/"):
+            return JSONResponse(
+                status_code=500,
+                content={
+                    "error": "Application initialization failed",
+                    "message": str(e),
+                    "traceback": traceback.format_exc()
+                }
+            )
+    except Exception as e2:
+        print(f"❌ Even error handler failed: {str(e2)}", file=sys.stderr)
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.flush()
+        # Last resort - create basic function handler
+        def basic_handler(request):
+            return {"statusCode": 500, "body": f"Error: {str(e)}"}
+        handler = basic_handler
+        app = None
 
-# Export for Vercel
-handler = app
+# CRITICAL: Ensure handler is ALWAYS defined
+if handler is None:
+    if app is not None:
+        handler = app
+        print("✅ Handler set from app", file=sys.stderr)
+    else:
+        # Last resort handler
+        print("⚠️ Creating fallback handler", file=sys.stderr)
+        def fallback_handler(request):
+            return {"statusCode": 200, "body": '{"error": "Handler initialization failed"}'}
+        handler = fallback_handler
+
 print("✅ Handler exported for Vercel", file=sys.stderr)
+print(f"Handler type: {type(handler).__name__}", file=sys.stderr)
 sys.stdout.flush()
 sys.stderr.flush()
