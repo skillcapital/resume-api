@@ -6,6 +6,7 @@ pydantic==2.12.3
 pydantic-core==2.41.4
 python-multipart==0.0.20
 python-dotenv==1.2.1
+mangum==0.18.0
 
 # --- Supabase (complete) ---
 supabase==2.23.0

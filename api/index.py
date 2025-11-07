@@ -1,6 +1,6 @@
 """
 Vercel serverless function entry point for FastAPI app.
-This file serves as the entry point for Vercel's Python runtime.
+Uses Mangum adapter for proper ASGI compatibility with Vercel.
 """
 import sys
 import os
@@ -24,24 +24,17 @@ def log_info(message):
         pass
 
 log_info("=" * 80)
-log_info("Starting Vercel Python handler initialization")
+log_info("Starting Vercel Python handler initialization with Mangum")
 log_info(f"Python version: {sys.version}")
-log_info(f"Current directory: {os.getcwd()}")
-log_info(f"__file__: {__file__}")
 
 # Add parent directory to Python path
 # This allows importing the 'app' module from the project root
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
 
-log_info(f"Current dir: {current_dir}")
-log_info(f"Parent dir: {parent_dir}")
-
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
     log_info(f"Added {parent_dir} to sys.path")
-
-log_info(f"Python path: {sys.path}")
 
 # Initialize handler variable
 handler = None
@@ -54,21 +47,27 @@ try:
     log_info("✅ Successfully imported app.main")
     log_info(f"App type: {type(app).__name__}")
     
-    # Vercel Python runtime requires 'handler' to be exported
-    # For ASGI applications like FastAPI, we export the app directly
-    handler = app
+    # Import Mangum adapter
+    log_info("Importing Mangum adapter...")
+    from mangum import Mangum
     
-    log_info("✅ Handler set to FastAPI app")
+    # Wrap FastAPI app with Mangum for Vercel compatibility
+    # lifespan="off" disables lifespan events (not needed for serverless)
+    handler = Mangum(app, lifespan="off")
+    
+    log_info("✅ Handler created with Mangum adapter")
+    log_info(f"Handler type: {type(handler).__name__}")
     
 except ImportError as e:
     error_msg = f"ImportError: {str(e)}\n{traceback.format_exc()}"
     log_error(error_msg)
     
-    # Try to create a minimal error handler
+    # Try to create a minimal error handler with Mangum
     try:
-        log_info("Creating error handler app...")
+        log_info("Creating error handler app with Mangum...")
         from fastapi import FastAPI
         from fastapi.responses import JSONResponse
+        from mangum import Mangum
         
         error_app = FastAPI(title="Error Handler")
         
@@ -91,8 +90,8 @@ except ImportError as e:
                 }
             )
         
-        handler = error_app
-        log_info("✅ Error handler app created")
+        handler = Mangum(error_app, lifespan="off")
+        log_info("✅ Error handler app created with Mangum")
     except Exception as fallback_error:
         log_error(f"Failed to create error handler: {fallback_error}")
         log_error(traceback.format_exc())
@@ -112,9 +111,10 @@ except Exception as e:
     
     # Create a minimal error handler that shows the actual error
     try:
-        log_info("Creating error handler for unexpected error...")
+        log_info("Creating error handler for unexpected error with Mangum...")
         from fastapi import FastAPI
         from fastapi.responses import JSONResponse
+        from mangum import Mangum
         
         error_app = FastAPI(title="Error Handler")
         
@@ -137,8 +137,8 @@ except Exception as e:
                 }
             )
         
-        handler = error_app
-        log_info("✅ Error handler app created")
+        handler = Mangum(error_app, lifespan="off")
+        log_info("✅ Error handler app created with Mangum")
     except Exception as fallback_error:
         log_error(f"Failed to create error handler: {fallback_error}")
         log_error(traceback.format_exc())
