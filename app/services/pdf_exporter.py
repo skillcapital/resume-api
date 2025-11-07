@@ -1,12 +1,27 @@
-from reportlab.lib.pagesizes import letter
-from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-from reportlab.lib.units import inch
-from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
-from reportlab.lib import colors
-from reportlab.lib.enums import TA_CENTER
 from io import BytesIO
 from typing import Dict, Any
 from html import escape
+
+# Lazy imports to prevent crashes on module load
+def _get_reportlab_imports():
+    """Lazy import reportlab modules only when needed."""
+    from reportlab.lib.pagesizes import letter
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER
+    return {
+        'letter': letter,
+        'getSampleStyleSheet': getSampleStyleSheet,
+        'ParagraphStyle': ParagraphStyle,
+        'inch': inch,
+        'SimpleDocTemplate': SimpleDocTemplate,
+        'Paragraph': Paragraph,
+        'Spacer': Spacer,
+        'colors': colors,
+        'TA_CENTER': TA_CENTER
+    }
 
 # Available templates
 AVAILABLE_TEMPLATES = {
@@ -29,6 +44,18 @@ def render_pdf(data: Dict[str, Any], template_name: str = "default") -> bytes:
         template_name: Name of the template to use (default, modern, classic, minimal)
     """
     try:
+        # Lazy import reportlab modules
+        rl = _get_reportlab_imports()
+        letter = rl['letter']
+        getSampleStyleSheet = rl['getSampleStyleSheet']
+        ParagraphStyle = rl['ParagraphStyle']
+        inch = rl['inch']
+        SimpleDocTemplate = rl['SimpleDocTemplate']
+        Paragraph = rl['Paragraph']
+        Spacer = rl['Spacer']
+        colors = rl['colors']
+        TA_CENTER = rl['TA_CENTER']
+        
         # Ensure data is a dictionary
         if not isinstance(data, dict):
             raise TypeError(f"Expected dict, got {type(data).__name__}")

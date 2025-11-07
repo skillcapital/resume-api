@@ -3,25 +3,42 @@ Vercel serverless function entry point
 Uses Vercel's standard api/ folder convention
 This wrapper imports from app.main to ensure proper module resolution
 """
+# CRITICAL: Import standard library first - these should NEVER fail
 import sys
 import os
-import traceback
-
-# Add project root to path to ensure imports work
-current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)
-
-if project_root not in sys.path:
-    sys.path.insert(0, project_root)
 
 # Immediate diagnostic output - this should ALWAYS appear if Python runs
-sys.stderr.write("=" * 60 + "\n")
-sys.stderr.write("API/INDEX.PY: Starting Vercel handler\n")
-sys.stderr.write(f"Current dir: {current_dir}\n")
-sys.stderr.write(f"Project root: {project_root}\n")
-sys.stderr.write(f"Python path (first 3): {sys.path[:3]}\n")
-sys.stderr.write("=" * 60 + "\n")
-sys.stderr.flush()
+# Use try/except to ensure we can log even if something fails
+try:
+    sys.stderr.write("=" * 60 + "\n")
+    sys.stderr.write("API/INDEX.PY: Starting Vercel handler\n")
+    sys.stderr.flush()
+except:
+    pass  # If even stderr fails, we're in deep trouble
+
+try:
+    import traceback
+except:
+    traceback = None
+
+# Add project root to path to ensure imports work
+try:
+    current_dir = os.path.dirname(os.path.abspath(__file__))
+    project_root = os.path.dirname(current_dir)
+    
+    if project_root not in sys.path:
+        sys.path.insert(0, project_root)
+    
+    sys.stderr.write(f"Current dir: {current_dir}\n")
+    sys.stderr.write(f"Project root: {project_root}\n")
+    sys.stderr.write(f"Python path (first 3): {sys.path[:3]}\n")
+    sys.stderr.write("=" * 60 + "\n")
+    sys.stderr.flush()
+except Exception as e:
+    sys.stderr.write(f"Error setting up paths: {str(e)}\n")
+    sys.stderr.flush()
+    current_dir = os.getcwd()
+    project_root = current_dir
 
 handler = None
 app = None
@@ -44,7 +61,10 @@ try:
     
 except Exception as e:
     sys.stderr.write(f"❌ Import from app.main failed: {str(e)}\n")
-    traceback.print_exc(file=sys.stderr)
+    if traceback:
+        traceback.print_exc(file=sys.stderr)
+    else:
+        sys.stderr.write(f"Traceback unavailable\n")
     sys.stderr.flush()
     
     # Fallback: Create minimal error handler
@@ -76,7 +96,8 @@ except Exception as e:
         
     except Exception as e2:
         sys.stderr.write(f"❌ Even fallback handler failed: {str(e2)}\n")
-        traceback.print_exc(file=sys.stderr)
+        if traceback:
+            traceback.print_exc(file=sys.stderr)
         sys.stderr.flush()
         
         # Last resort: Basic function handler

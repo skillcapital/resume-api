@@ -1,8 +1,16 @@
 import json
-from langchain_openai import ChatOpenAI
-from langchain_core.prompts import ChatPromptTemplate
-from app.core.config import OPENAI_API_KEY
 from typing import Dict, Any, Optional
+
+# Lazy imports to prevent crashes on module load
+def _get_chat_openai():
+    """Lazy import ChatOpenAI only when needed."""
+    from langchain_openai import ChatOpenAI
+    return ChatOpenAI
+
+def _get_chat_prompt_template():
+    """Lazy import ChatPromptTemplate only when needed."""
+    from langchain_core.prompts import ChatPromptTemplate
+    return ChatPromptTemplate
 
 # Initialize LLM lazily to avoid errors if API key is missing
 llm = None
@@ -11,8 +19,10 @@ def get_llm():
     """Get or create LLM instance."""
     global llm
     if llm is None:
+        from app.core.config import OPENAI_API_KEY
         if not OPENAI_API_KEY:
             raise ValueError("OPENAI_API_KEY is not set. Please set it in environment variables.")
+        ChatOpenAI = _get_chat_openai()
         llm = ChatOpenAI(
             model="gpt-4o-mini",
             temperature=0.3,
@@ -27,6 +37,7 @@ async def improve_resume(resume: Dict[str, Any]) -> Dict[str, Any]:
     try:
         raw_text = resume.get("raw_text", "")
         
+        ChatPromptTemplate = _get_chat_prompt_template()
         prompt_template = ChatPromptTemplate.from_messages([
             ("system", "You are a professional resume writer. Rewrite resumes to be concise, measurable, and action-driven. Always return valid JSON."),
             ("human", """
@@ -106,6 +117,7 @@ async def tailor_resume(resume: Dict[str, Any], job_description: str) -> Dict[st
     try:
         raw_text = resume.get("raw_text", "")
         
+        ChatPromptTemplate = _get_chat_prompt_template()
         prompt_template = ChatPromptTemplate.from_messages([
             ("system", "You are a professional resume writer specializing in ATS optimization. Tailor resumes to match job descriptions perfectly. Always return valid JSON."),
             ("human", """
