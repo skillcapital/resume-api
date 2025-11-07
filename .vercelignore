@@ -1,61 +1,229 @@
+# ============================================
 # Virtual Environments
-requirements-full.txt
+# ============================================
 venv/
 env/
+ENV/
 .venv/
+venv.bak/
+env.bak/
+.venv.bak/
+requirements-full.txt
+requirements-dev.txt
+requirements-test.txt
 
-# Python cache
+# ============================================
+# Python Cache & Compiled Files
+# ============================================
 __pycache__/
 *.py[cod]
 *.pyc
 *.pyo
 *.pyd
 .Python
-
-# Build artifacts
-build/
-dist/
+*.so
+*.egg
 *.egg-info/
 .eggs/
+dist/
+build/
+develop-eggs/
+downloads/
+eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+pip-log.txt
+pip-delete-this-directory.txt
 
-# IDE
+# ============================================
+# Environment & Configuration Files
+# ============================================
+.env
+.env.local
+.env.*.local
+.env.development
+.env.test
+.env.production
+*.env
+.envrc
+
+# ============================================
+# IDE & Editor Files
+# ============================================
 .vscode/
 .idea/
 *.swp
 *.swo
 *~
+.project
+.pydevproject
+.settings/
+*.sublime-project
+*.sublime-workspace
+*.code-workspace
 
-# OS
+# ============================================
+# OS Files
+# ============================================
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
 
-# Logs
+# ============================================
+# Logs & Debug Files
+# ============================================
 *.log
+*.log.*
+logs/
+*.out
+*.err
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.hypothesis/
 
-# Documentation (keep README.md)
+# ============================================
+# Documentation & Setup Files (not needed in deployment)
+# ============================================
 QUICKSTART.md
 SUPABASE_SETUP.sql
+*.md
+!README.md
+docs/
+documentation/
 
-# Frontend (if still present)
+# ============================================
+# Frontend Files (if present)
+# ============================================
 frontend/
+client/
+src/
+public/
 node_modules/
+package.json
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+.next/
+.nuxt/
+.vuepress/
+.svelte-kit/
+out/
+dist/
 
-# Test files
+# ============================================
+# Test Files & Directories
+# ============================================
 tests/
+test/
 test_*.py
 *_test.py
+*_tests.py
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.hypothesis/
+.mypy_cache/
+.dmypy.json
+dmypy.json
 
-# Large files
+# ============================================
+# Large Media & Document Files
+# ============================================
 *.pdf
 *.docx
+*.doc
+*.xlsx
+*.xls
+*.pptx
+*.ppt
+*.zip
+*.tar
+*.tar.gz
+*.rar
+*.7z
+*.mp4
+*.avi
+*.mov
+*.mp3
+*.wav
 
-# Temporary files
+# ============================================
+# Temporary & Runtime Files
+# ============================================
 tmp/
 temp/
+.tmp/
+.temp/
 uploads/
 exports/
+cache/
+.cache/
+*.tmp
+*.temp
+*.bak
+*.backup
+*.old
+*.orig
+*.swp
+*.swo
 
-# Git
+# ============================================
+# Version Control
+# ============================================
 .git/
 .gitignore
+.gitattributes
+.gitmodules
+.svn/
+.hg/
+.bzr/
 
+# ============================================
+# Jupyter Notebooks (if present)
+# ============================================
+.ipynb_checkpoints/
+*.ipynb
+
+# ============================================
+# Database Files (if any local DBs)
+# ============================================
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+
+# ============================================
+# Local Development Scripts
+# ============================================
+run.py
+run_local.py
+dev.py
+local.py
+scripts/
+!api/
+
+# ============================================
+# Vercel Specific (keep these)
+# DO NOT IGNORE:
+# - api/
+# - app/
+# - requirements.txt
+# - vercel.json
+# ============================================

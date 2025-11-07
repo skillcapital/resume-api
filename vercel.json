@@ -2,17 +2,21 @@
   "version": 2,
   "builds": [
     {
-      "src": "api/index.py",
+      "src": "app/main.py",
       "use": "@vercel/python",
       "config": {
-        "includeFiles": ["app/**", "requirements.txt"]
+        "includeFiles": ["app/**", "requirements.txt"],
+        "maxLambdaSize": "50mb"
       }
     }
   ],
   "routes": [
     {
       "src": "/(.*)",
-      "dest": "api/index.py"
+      "dest": "app/main.py"
     }
-  ]
+  ],
+  "env": {
+    "PYTHON_VERSION": "3.12"
+  }
 }

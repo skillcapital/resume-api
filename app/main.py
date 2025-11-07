@@ -1,6 +1,6 @@
-import os
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 
 # Import router safely - if it fails, we'll create a minimal app
 try:
@@ -14,40 +14,17 @@ except Exception as e:
     import sys
     print(f"Warning: Failed to import resume router: {str(e)}", file=sys.stderr)
 
-# Import config safely
-try:
-    from app.core.config import FRONTEND_URL
-except Exception:
-    FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
-
 app = FastAPI(
     title="AI Resume Builder",
     description="Build and improve resumes with AI assistance",
     version="1.0.0"
 )
 
-# Configure CORS - flexible for backend-only or with frontend
-# If FRONTEND_URL is set, use specific origins; otherwise allow all origins
-if FRONTEND_URL and FRONTEND_URL != "http://localhost:3000":
-    # Specific frontend URL provided - use restrictive CORS
-    allowed_origins = [
-        FRONTEND_URL,
-        "https://supabase-skillcapital-lms-git-2c784d-tech-kdigitalais-projects.vercel.app",  # Preview frontend URL
-        "http://localhost:3000",  # Local development
-        "http://127.0.0.1:3000",  # Alternative localhost
-    ]
-    # Remove duplicates while preserving order
-    allowed_origins = list(dict.fromkeys(allowed_origins))
-    allow_credentials = True
-else:
-    # No specific frontend URL - allow all origins (backend-only deployment)
-    allowed_origins = ["*"]
-    allow_credentials = False  # Cannot use credentials with wildcard origin
-
+# Configure CORS - allow all origins for backend-only deployment
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
-    allow_credentials=allow_credentials,
+    allow_origins=["*"],
+    allow_credentials=False,  # Cannot use credentials with wildcard origin
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -68,5 +45,58 @@ def root():
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy"}
+    """
+    Health check endpoint that verifies API and Supabase connection
+    """
+    # Import here to avoid circular imports and handle errors gracefully
+    try:
+        from app.core.config import supabase, SUPABASE_URL, SUPABASE_KEY
+    except Exception as e:
+        return JSONResponse(
+            status_code=503,
+            content={
+                "status": "degraded",
+                "api": "running",
+                "supabase": {
+                    "configured": False,
+                    "connected": False,
+                    "error": f"Failed to import config: {str(e)}"
+                }
+            }
+        )
+    
+    health = {
+        "status": "healthy",
+        "api": "running",
+        "supabase": {
+            "configured": bool(SUPABASE_URL and SUPABASE_KEY),
+            "connected": False
+        }
+    }
+    
+    # Check Supabase connection
+    if health["supabase"]["configured"]:
+        if supabase is None:
+            health["status"] = "degraded"
+            health["supabase"]["error"] = "Client not initialized"
+        else:
+            try:
+                # Simple connection test - query with limit 0 (fastest check)
+                # This verifies the connection without fetching actual data
+                supabase.table("resumes").select("id").limit(0).execute()
+                health["supabase"]["connected"] = True
+            except Exception as e:
+                health["status"] = "degraded"
+                health["supabase"]["connected"] = False
+                health["supabase"]["error"] = str(e)
+    else:
+        health["status"] = "degraded"
+        health["supabase"]["error"] = "Not configured (missing SUPABASE_URL or SUPABASE_SERVICE_KEY)"
+    
+    status_code = 200 if health["status"] == "healthy" else 503
+    return JSONResponse(status_code=status_code, content=health)
+
+# Export for Vercel (required for serverless deployment)
+# Vercel Python runtime looks for 'handler' or 'app'
+handler = app
 
