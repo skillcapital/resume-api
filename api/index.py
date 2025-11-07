@@ -1,134 +1,168 @@
 """
 Vercel serverless function entry point
-Uses Vercel's standard api/ folder convention
-This wrapper imports from app.main to ensure proper module resolution
+PERMANENT FIX: Start with minimal app, then optionally enhance with full app
 """
-# CRITICAL: Import standard library first - these should NEVER fail
 import sys
 import os
 
-# Immediate diagnostic output - this should ALWAYS appear if Python runs
-# Use try/except to ensure we can log even if something fails
-try:
-    sys.stderr.write("=" * 60 + "\n")
-    sys.stderr.write("API/INDEX.PY: Starting Vercel handler\n")
-    sys.stderr.flush()
-except:
-    pass  # If even stderr fails, we're in deep trouble
+# CRITICAL: Write to stderr IMMEDIATELY - this must appear if Python runs
+sys.stderr.write("=" * 80 + "\n")
+sys.stderr.write("API/INDEX.PY: FILE LOADED - Python is running!\n")
+sys.stderr.write(f"Python version: {sys.version}\n")
+sys.stderr.write(f"Current dir: {os.getcwd()}\n")
+sys.stderr.write(f"File location: {__file__}\n")
+sys.stderr.write("=" * 80 + "\n")
+sys.stderr.flush()
 
-try:
-    import traceback
-except:
-    traceback = None
-
-# Add project root to path to ensure imports work
+# Add project root to path
 try:
     current_dir = os.path.dirname(os.path.abspath(__file__))
     project_root = os.path.dirname(current_dir)
-    
     if project_root not in sys.path:
         sys.path.insert(0, project_root)
-    
-    sys.stderr.write(f"Current dir: {current_dir}\n")
-    sys.stderr.write(f"Project root: {project_root}\n")
-    sys.stderr.write(f"Python path (first 3): {sys.path[:3]}\n")
-    sys.stderr.write("=" * 60 + "\n")
+    sys.stderr.write(f"Project root added to path: {project_root}\n")
     sys.stderr.flush()
 except Exception as e:
-    sys.stderr.write(f"Error setting up paths: {str(e)}\n")
+    sys.stderr.write(f"Path setup error: {e}\n")
     sys.stderr.flush()
-    current_dir = os.getcwd()
-    project_root = current_dir
 
-handler = None
-app = None
-
-try:
-    sys.stderr.write("Attempting to import from app.main...\n")
-    sys.stderr.flush()
-    
-    # Import app and handler from app.main
-    from app.main import app, handler
-    
-    # Ensure handler exists
-    if handler is None:
-        handler = app
-    
-    sys.stderr.write(f"✅ Successfully imported from app.main\n")
-    sys.stderr.write(f"Handler type: {type(handler).__name__}\n")
-    sys.stderr.write(f"App type: {type(app).__name__ if app else 'None'}\n")
-    sys.stderr.flush()
-    
-except Exception as e:
-    sys.stderr.write(f"❌ Import from app.main failed: {str(e)}\n")
-    if traceback:
-        traceback.print_exc(file=sys.stderr)
-    else:
-        sys.stderr.write(f"Traceback unavailable\n")
-    sys.stderr.flush()
-    
-    # Fallback: Create minimal error handler
-    try:
-        sys.stderr.write("Creating fallback error handler...\n")
-        sys.stderr.flush()
-        
-        from fastapi import FastAPI
-        from fastapi.responses import JSONResponse
-        
-        app = FastAPI(title="Error Handler")
-        
-        @app.get("/{full_path:path}")
-        @app.get("/")
-        async def error_handler(full_path: str = "/"):
-            return JSONResponse(
-                status_code=500,
-                content={
-                    "error": "Application import failed",
-                    "message": str(e),
-                    "traceback": traceback.format_exc(),
-                    "path": full_path
-                }
-            )
-        
-        handler = app
-        sys.stderr.write("✅ Fallback error handler created\n")
-        sys.stderr.flush()
-        
-    except Exception as e2:
-        sys.stderr.write(f"❌ Even fallback handler failed: {str(e2)}\n")
-        if traceback:
-            traceback.print_exc(file=sys.stderr)
-        sys.stderr.flush()
-        
-        # Last resort: Basic function handler
-        def basic_handler(request):
-            return {
-                "statusCode": 500,
-                "headers": {"Content-Type": "application/json"},
-                "body": '{"error": "Critical initialization failure", "message": "' + str(e).replace('"', '\\"') + '"}'
-            }
-        handler = basic_handler
-        app = None
-
-# CRITICAL: Ensure handler is ALWAYS defined
-if handler is None:
-    sys.stderr.write("⚠️ Handler is None, creating final fallback\n")
-    sys.stderr.flush()
-    
-    def fallback_handler(request):
-        return {
-            "statusCode": 200,
-            "headers": {"Content-Type": "application/json"},
-            "body": '{"error": "No handler available", "status": "failed"}'
-        }
-    handler = fallback_handler
-
-sys.stderr.write("=" * 60 + "\n")
-sys.stderr.write("✅ Handler exported for Vercel\n")
-sys.stderr.write(f"Final handler type: {type(handler).__name__}\n")
-sys.stderr.write("=" * 60 + "\n")
+# STEP 1: Import FastAPI directly (no app.main import yet)
+sys.stderr.write("Step 1: Importing FastAPI directly...\n")
 sys.stderr.flush()
 
-# Export handler for Vercel
-# Vercel will use this handler variable
+try:
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import JSONResponse
+    sys.stderr.write("✅ FastAPI imported successfully\n")
+    sys.stderr.flush()
+except Exception as e:
+    sys.stderr.write(f"❌ CRITICAL: FastAPI import failed: {e}\n")
+    import traceback
+    traceback.print_exc(file=sys.stderr)
+    sys.stderr.flush()
+    # If FastAPI can't be imported, we're completely broken
+    def handler(request):
+        return {
+            "statusCode": 500,
+            "headers": {"Content-Type": "application/json"},
+            "body": '{"error": "FastAPI import failed", "message": "' + str(e).replace('"', '\\"') + '"}'
+        }
+    sys.stderr.write("Created fallback handler (FastAPI unavailable)\n")
+    sys.stderr.flush()
+else:
+    # STEP 2: Create minimal working app FIRST
+    sys.stderr.write("Step 2: Creating minimal FastAPI app...\n")
+    sys.stderr.flush()
+    
+    app = FastAPI(
+        title="AI Resume Builder",
+        description="Build and improve resumes with AI assistance",
+        version="1.0.0"
+    )
+    
+    # Add CORS
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+    
+    # Basic endpoints that work without any imports
+    @app.get("/")
+    def root():
+        return {"message": "AI Resume Builder is running 🚀", "status": "operational"}
+    
+    @app.get("/health")
+    def health():
+        return {"status": "healthy", "api": "running"}
+    
+    sys.stderr.write("✅ Minimal app created with basic endpoints\n")
+    sys.stderr.flush()
+    
+    # STEP 3: Try to import and add router (optional enhancement)
+    sys.stderr.write("Step 3: Attempting to import router (optional)...\n")
+    sys.stderr.flush()
+    
+    try:
+        from app.api.routes_resume import router as resume_router
+        app.include_router(resume_router, prefix="/api/v1/resumes", tags=["resumes"])
+        sys.stderr.write("✅ Router imported and added successfully\n")
+        sys.stderr.flush()
+    except Exception as e:
+        sys.stderr.write(f"⚠️ Router import failed (non-critical): {e}\n")
+        import traceback
+        traceback.print_exc(file=sys.stderr)
+        sys.stderr.flush()
+        # Add a status endpoint to indicate router is unavailable
+        @app.get("/api/v1/resumes/status")
+        def router_status():
+            return {"status": "Router not available", "error": str(e)}
+    
+    # STEP 4: Enhance health endpoint with Supabase check (optional)
+    sys.stderr.write("Step 4: Enhancing health endpoint...\n")
+    sys.stderr.flush()
+    
+    try:
+        from app.core.config import get_supabase_client, SUPABASE_URL, SUPABASE_KEY
+        
+        # Replace the simple health endpoint with enhanced one
+        @app.get("/health")
+        def health_check():
+            """Health check endpoint with Supabase status"""
+            health = {
+                "status": "healthy",
+                "api": "running",
+                "supabase": {
+                    "configured": bool(SUPABASE_URL and SUPABASE_KEY),
+                    "connected": False
+                }
+            }
+            
+            if health["supabase"]["configured"]:
+                try:
+                    supabase = get_supabase_client()
+                    if supabase is None:
+                        health["status"] = "degraded"
+                        health["supabase"]["error"] = "Client not initialized"
+                    else:
+                        try:
+                            supabase.table("resumes").select("id").limit(0).execute()
+                            health["supabase"]["connected"] = True
+                        except Exception as e:
+                            health["status"] = "degraded"
+                            health["supabase"]["connected"] = False
+                            health["supabase"]["error"] = str(e)
+                except Exception as e:
+                    health["status"] = "degraded"
+                    health["supabase"]["connected"] = False
+                    health["supabase"]["error"] = f"Failed to get client: {str(e)}"
+            else:
+                health["status"] = "degraded"
+                health["supabase"]["error"] = "Not configured (missing SUPABASE_URL or SUPABASE_SERVICE_KEY)"
+            
+            status_code = 200 if health["status"] == "healthy" else 503
+            return JSONResponse(status_code=status_code, content=health)
+        
+        sys.stderr.write("✅ Health endpoint enhanced with Supabase check\n")
+        sys.stderr.flush()
+    except Exception as e:
+        sys.stderr.write(f"⚠️ Health endpoint enhancement failed (non-critical): {e}\n")
+        sys.stderr.flush()
+        # Keep the simple health endpoint
+    
+    # Set handler
+    handler = app
+    sys.stderr.write("✅ Handler set to app\n")
+    sys.stderr.flush()
 
+# Final export
+sys.stderr.write("=" * 80 + "\n")
+sys.stderr.write(f"✅ Handler ready: {type(handler).__name__}\n")
+sys.stderr.write("=" * 80 + "\n")
+sys.stderr.flush()
+
+# Export for Vercel
+# Vercel Python runtime expects 'handler' or 'app' variable
