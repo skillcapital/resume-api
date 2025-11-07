@@ -63,6 +63,9 @@ def _init_supabase_if_needed():
     if not _supabase_initialized:
         get_supabase_client()
 
+# Frontend URL - can be different per branch/environment
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
 # Bucket names
 SUPABASE_BUCKET_UPLOADS = os.getenv("SUPABASE_BUCKET_UPLOADS", "uploads")
 SUPABASE_BUCKET_EXPORTS = os.getenv("SUPABASE_BUCKET_EXPORTS", "exports")
