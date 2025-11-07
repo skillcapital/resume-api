@@ -1,38 +1,61 @@
 """
 Vercel serverless function entry point for FastAPI app.
-Vercel natively supports ASGI applications, so we export the app directly.
+Vercel automatically detects the 'app' variable.
 """
 import sys
 import os
 
+# Write to stderr for Vercel logs
+def log(msg):
+    try:
+        sys.stderr.write(f"[API/INDEX] {msg}\n")
+        sys.stderr.flush()
+    except:
+        pass
+
+log("=" * 60)
+log("Starting handler initialization")
+log(f"Python version: {sys.version}")
+log(f"Current dir: {os.getcwd()}")
+log(f"__file__: {__file__}")
+
 # Add parent directory to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
 parent_dir = os.path.dirname(current_dir)
+log(f"Parent dir: {parent_dir}")
+
 if parent_dir not in sys.path:
     sys.path.insert(0, parent_dir)
+    log(f"Added {parent_dir} to sys.path")
 
-# Import and export FastAPI app directly
-# Vercel natively supports ASGI applications like FastAPI
+log(f"Python path: {sys.path[:3]}...")  # Show first 3 entries
+
+# Import and export FastAPI app
+# Vercel looks for 'app' variable, not 'handler'
 try:
+    log("Attempting to import app.main...")
     from app.main import app
-    # Export the app directly - Vercel handles ASGI natively
-    handler = app
+    log(f"✅ Successfully imported app. Type: {type(app).__name__}")
+    # Export as 'app' - Vercel automatically detects this
     
 except Exception as e:
-    # If import fails, create minimal error handler
+    log(f"❌ Import failed: {type(e).__name__}: {str(e)}")
     import traceback
+    log(traceback.format_exc())
     
+    # If import fails, create minimal error handler
     try:
+        log("Creating error handler app...")
         from fastapi import FastAPI
         from fastapi.responses import JSONResponse
         
-        error_app = FastAPI()
+        app = FastAPI()
         
-        @error_app.get("/{full_path:path}")
-        @error_app.post("/{full_path:path}")
-        @error_app.put("/{full_path:path}")
-        @error_app.delete("/{full_path:path}")
-        @error_app.patch("/{full_path:path}")
+        @app.get("/{full_path:path}")
+        @app.post("/{full_path:path}")
+        @app.put("/{full_path:path}")
+        @app.delete("/{full_path:path}")
+        @app.patch("/{full_path:path}")
         async def error_handler(full_path: str):
             return JSONResponse(
                 status_code=500,
@@ -40,23 +63,26 @@ except Exception as e:
                     "error": "Application failed to initialize",
                     "message": str(e),
                     "type": type(e).__name__,
-                    "traceback": traceback.format_exc()
+                    "traceback": traceback.format_exc(),
+                    "python_path": sys.path[:5]  # First 5 entries
                 }
             )
-        
-        handler = error_app
+        log("✅ Error handler app created")
         
     except Exception as fallback_error:
-        # Last resort: create a basic function handler
-        def basic_handler(request):
-            import json
+        log(f"❌ Error handler creation failed: {fallback_error}")
+        # Last resort: create a basic FastAPI app
+        from fastapi import FastAPI
+        app = FastAPI()
+        
+        @app.get("/{full_path:path}")
+        async def error_route(full_path: str):
             return {
-                "statusCode": 500,
-                "headers": {"Content-Type": "application/json"},
-                "body": json.dumps({
-                    "error": "Critical initialization failure",
-                    "primary_error": str(e),
-                    "fallback_error": str(fallback_error)
-                })
+                "error": "Critical initialization failure",
+                "primary_error": str(e),
+                "fallback_error": str(fallback_error)
             }
-        handler = basic_handler
+        log("✅ Basic error app created")
+
+log(f"✅ Final app type: {type(app).__name__}")
+log("=" * 60)
