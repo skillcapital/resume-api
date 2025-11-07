@@ -187,3 +187,4 @@ Cursor's built-in HTTP Client allows you to test endpoints directly:
 
 MIT
 
+# Auto-deploy test
