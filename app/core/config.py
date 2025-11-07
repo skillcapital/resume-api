@@ -22,17 +22,46 @@ SUPABASE_URL = os.getenv("SUPABASE_URL")
 SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Supabase client - initialize safely to prevent import errors
+# Supabase client - lazy initialization to reduce cold start time
+# Don't create client at import time, only when needed
 supabase: Optional[Client] = None
-if SUPABASE_AVAILABLE and SUPABASE_URL and SUPABASE_KEY:
-    try:
-        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
-    except Exception as e:
-        # Log error but don't crash - supabase will be None
-        # This allows the app to start even if Supabase config is invalid
-        import sys
-        print(f"Warning: Failed to initialize Supabase client: {str(e)}", file=sys.stderr)
-        supabase = None
+_supabase_initialized = False
+
+def get_supabase_client():
+    """
+    Lazy initialization of Supabase client.
+    Only creates client when first accessed, not at import time.
+    This reduces cold start time on Vercel.
+    """
+    global supabase, _supabase_initialized
+    
+    # Return existing client if already initialized
+    if _supabase_initialized:
+        return supabase
+    
+    # Initialize only if available and credentials are set
+    if SUPABASE_AVAILABLE and SUPABASE_URL and SUPABASE_KEY:
+        try:
+            supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+            _supabase_initialized = True
+            return supabase
+        except Exception as e:
+            # Log error but don't crash
+            import sys
+            print(f"Warning: Failed to initialize Supabase client: {str(e)}", file=sys.stderr)
+            _supabase_initialized = True  # Mark as attempted to avoid retries
+            supabase = None
+            return None
+    
+    _supabase_initialized = True
+    return None
+
+# For backward compatibility - initialize on first access
+# This allows existing code to work without changes
+def _init_supabase_if_needed():
+    """Initialize Supabase if not already done."""
+    if not _supabase_initialized:
+        get_supabase_client()
 
 # Bucket names
 SUPABASE_BUCKET_UPLOADS = os.getenv("SUPABASE_BUCKET_UPLOADS", "uploads")

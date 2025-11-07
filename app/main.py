@@ -50,7 +50,7 @@ def health_check():
     """
     # Import here to avoid circular imports and handle errors gracefully
     try:
-        from app.core.config import supabase, SUPABASE_URL, SUPABASE_KEY
+        from app.core.config import get_supabase_client, SUPABASE_URL, SUPABASE_KEY
     except Exception as e:
         return JSONResponse(
             status_code=503,
@@ -74,21 +74,27 @@ def health_check():
         }
     }
     
-    # Check Supabase connection
+    # Check Supabase connection (lazy initialization)
     if health["supabase"]["configured"]:
-        if supabase is None:
-            health["status"] = "degraded"
-            health["supabase"]["error"] = "Client not initialized"
-        else:
-            try:
-                # Simple connection test - query with limit 0 (fastest check)
-                # This verifies the connection without fetching actual data
-                supabase.table("resumes").select("id").limit(0).execute()
-                health["supabase"]["connected"] = True
-            except Exception as e:
+        try:
+            supabase = get_supabase_client()
+            if supabase is None:
                 health["status"] = "degraded"
-                health["supabase"]["connected"] = False
-                health["supabase"]["error"] = str(e)
+                health["supabase"]["error"] = "Client not initialized"
+            else:
+                try:
+                    # Simple connection test - query with limit 0 (fastest check)
+                    # This verifies the connection without fetching actual data
+                    supabase.table("resumes").select("id").limit(0).execute()
+                    health["supabase"]["connected"] = True
+                except Exception as e:
+                    health["status"] = "degraded"
+                    health["supabase"]["connected"] = False
+                    health["supabase"]["error"] = str(e)
+        except Exception as e:
+            health["status"] = "degraded"
+            health["supabase"]["connected"] = False
+            health["supabase"]["error"] = f"Failed to get client: {str(e)}"
     else:
         health["status"] = "degraded"
         health["supabase"]["error"] = "Not configured (missing SUPABASE_URL or SUPABASE_SERVICE_KEY)"

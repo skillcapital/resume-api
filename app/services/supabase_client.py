@@ -1,12 +1,17 @@
-from app.core.config import supabase, SUPABASE_BUCKET_EXPORTS
+from app.core.config import get_supabase_client, SUPABASE_BUCKET_EXPORTS
 import uuid
 from typing import Dict, Any, Optional
 from datetime import datetime
+
+def _get_supabase():
+    """Get Supabase client with lazy initialization."""
+    return get_supabase_client()
 
 def save_resume_raw(text: str) -> str:
     """
     Save raw resume text to database.
     """
+    supabase = _get_supabase()
     if not supabase:
         raise Exception("Supabase client not initialized. Check your .env file.")
     
@@ -27,6 +32,7 @@ def save_resume_version(resume_id: str, content: Dict[str, Any], version_type: s
     """
     Save a resume version (improved or tailored) to database.
     """
+    supabase = _get_supabase()
     if not supabase:
         raise Exception("Supabase client not initialized. Check your .env file.")
     
@@ -44,6 +50,7 @@ def get_resume(resume_id: str) -> Optional[Dict[str, Any]]:
     """
     Get resume by ID.
     """
+    supabase = _get_supabase()
     if not supabase:
         raise Exception("Supabase client not initialized. Check your .env file.")
     
@@ -59,6 +66,7 @@ def get_latest_resume_version(resume_id: str, version_type: str = "latest") -> O
     """
     Get latest resume version.
     """
+    supabase = _get_supabase()
     if not supabase:
         raise Exception("Supabase client not initialized. Check your .env file.")
     
@@ -81,6 +89,7 @@ def upload_pdf(resume_id: str, pdf_bytes: bytes, template: str = "default") -> s
     Upload PDF to Supabase storage and return public URL.
     Handles duplicate files by deleting existing file first.
     """
+    supabase = _get_supabase()
     if not supabase:
         raise Exception("Supabase client not initialized. Check your .env file.")
     

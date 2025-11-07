@@ -6,7 +6,7 @@
       "use": "@vercel/python",
       "config": {
         "includeFiles": ["app/**", "requirements.txt"],
-        "maxLambdaSize": "50mb"
+        "maxLambdaSize": "250mb"
       }
     }
   ],
@@ -16,6 +16,11 @@
       "dest": "app/main.py"
     }
   ],
+  "functions": {
+    "app/main.py": {
+      "maxDuration": 60
+    }
+  },
   "env": {
     "PYTHON_VERSION": "3.12"
   }
