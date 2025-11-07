@@ -1,13 +1,30 @@
 import sys
 import traceback
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+import os
+
+# Force flush output immediately
+sys.stdout.flush()
+sys.stderr.flush()
+
+# Print Python path for debugging
+print("=" * 50, file=sys.stderr)
+print("Python path:", sys.path, file=sys.stderr)
+print("Current directory:", os.getcwd(), file=sys.stderr)
+print("=" * 50, file=sys.stderr)
 
 # Diagnostic: Catch fatal import errors
 try:
+    print("Starting FastAPI imports...", file=sys.stderr)
+    
+    from fastapi import FastAPI
+    from fastapi.middleware.cors import CORSMiddleware
+    from fastapi.responses import JSONResponse
+    
+    print("✅ FastAPI core imported", file=sys.stderr)
+    
     # Import router safely - if it fails, we'll create a minimal app
     try:
+        print("Attempting to import router...", file=sys.stderr)
         from app.api.routes_resume import router as resume_router
         ROUTER_AVAILABLE = True
         print("✅ Router imported successfully", file=sys.stderr)
@@ -29,7 +46,7 @@ try:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=["*"],
-        allow_credentials=False,  # Cannot use credentials with wildcard origin
+        allow_credentials=False,
         allow_methods=["*"],
         allow_headers=["*"],
     )
@@ -39,7 +56,6 @@ try:
         app.include_router(resume_router, prefix="/api/v1/resumes", tags=["resumes"])
         print("✅ Router included in app", file=sys.stderr)
     else:
-        # Add a fallback route to indicate router is not available
         @app.get("/api/v1/resumes/status")
         def router_status():
             return {"status": "Router not available", "error": "Failed to import resume router"}
@@ -50,10 +66,7 @@ try:
 
     @app.get("/health")
     def health_check():
-        """
-        Health check endpoint that verifies API and Supabase connection
-        """
-        # Import here to avoid circular imports and handle errors gracefully
+        """Health check endpoint"""
         try:
             from app.core.config import get_supabase_client, SUPABASE_URL, SUPABASE_KEY
         except Exception as e:
@@ -79,7 +92,6 @@ try:
             }
         }
         
-        # Check Supabase connection (lazy initialization)
         if health["supabase"]["configured"]:
             try:
                 supabase = get_supabase_client()
@@ -88,8 +100,6 @@ try:
                     health["supabase"]["error"] = "Client not initialized"
                 else:
                     try:
-                        # Simple connection test - query with limit 0 (fastest check)
-                        # This verifies the connection without fetching actual data
                         supabase.table("resumes").select("id").limit(0).execute()
                         health["supabase"]["connected"] = True
                     except Exception as e:
@@ -112,7 +122,7 @@ try:
 except Exception as e:
     print("❌ Fatal import error:", str(e), file=sys.stderr)
     traceback.print_exc(file=sys.stderr)
-    # Create minimal error app so Vercel doesn't crash completely
+    # Create minimal error app
     app = FastAPI(title="Error Handler")
     @app.get("/{full_path:path}")
     @app.get("/")
@@ -126,7 +136,8 @@ except Exception as e:
             }
         )
 
-# Export for Vercel (required for serverless deployment)
-# Vercel Python runtime looks for 'handler' or 'app'
+# Export for Vercel
 handler = app
 print("✅ Handler exported for Vercel", file=sys.stderr)
+sys.stdout.flush()
+sys.stderr.flush()
