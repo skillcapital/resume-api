@@ -265,11 +265,22 @@ async def get_template_preview(template_name: str):
         # Normalize data
         normalized_data = pdf_exporter.normalize_resume_data(sample_data)
         
-        # Get template
+        # Get template - use absolute path for Vercel compatibility
         from jinja2 import Environment, FileSystemLoader
         import os
         
-        template_dir = os.path.join(os.path.dirname(__file__), "..", "templates")
+        # Get absolute path to templates directory
+        current_file = os.path.abspath(__file__)
+        # routes_resume.py is in app/api/, so go up two levels to app/, then into templates
+        app_dir = os.path.dirname(os.path.dirname(current_file))
+        template_dir = os.path.join(app_dir, "templates")
+        
+        # Ensure template directory exists
+        if not os.path.exists(template_dir):
+            # Fallback: try relative path
+            template_dir = os.path.join(os.path.dirname(__file__), "..", "templates")
+            template_dir = os.path.abspath(template_dir)
+        
         env = Environment(loader=FileSystemLoader(template_dir))
         
         # Validate template
