@@ -54,6 +54,12 @@ def get_resume(resume_id: str) -> Optional[Dict[str, Any]]:
     if not supabase:
         raise Exception("Supabase client not initialized. Check your .env file.")
     
+    # Validate UUID format before querying database
+    try:
+        uuid.UUID(resume_id)
+    except (ValueError, TypeError):
+        raise Exception(f"Invalid resume ID format: '{resume_id}'. Resume ID must be a valid UUID.")
+    
     try:
         result = supabase.table("resumes").select("*").eq("id", resume_id).execute()
         if result.data:
@@ -69,6 +75,12 @@ def get_latest_resume_version(resume_id: str, version_type: str = "latest") -> O
     supabase = _get_supabase()
     if not supabase:
         raise Exception("Supabase client not initialized. Check your .env file.")
+    
+    # Validate UUID format before querying database
+    try:
+        uuid.UUID(resume_id)
+    except (ValueError, TypeError):
+        raise Exception(f"Invalid resume ID format: '{resume_id}'. Resume ID must be a valid UUID.")
     
     try:
         query = supabase.table("resume_versions").select("*").eq("resume_id", resume_id)

@@ -1,6 +1,7 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Body
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Body, Path
 from typing import Optional, Dict, Any
 import json
+import uuid
 from pydantic import BaseModel
 
 # Import services safely - handle import errors gracefully
@@ -125,6 +126,15 @@ async def improve_resume(resume_id: str = Form(...)):
     Improve resume using AI.
     """
     try:
+        # Validate UUID format
+        try:
+            uuid.UUID(resume_id)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid resume ID format. Expected UUID, got: '{resume_id}'. Please use a valid resume ID."
+            )
+        
         # Get resume from database
         resume = supabase_client.get_resume(resume_id)
         if not resume:
@@ -141,6 +151,8 @@ async def improve_resume(resume_id: str = Form(...)):
             "version": improved,
             "status": "success"
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error improving resume: {str(e)}")
 
@@ -153,6 +165,15 @@ async def tailor_resume(
     Tailor resume for a specific job description.
     """
     try:
+        # Validate UUID format
+        try:
+            uuid.UUID(resume_id)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid resume ID format. Expected UUID, got: '{resume_id}'. Please use a valid resume ID."
+            )
+        
         # Get resume from database
         resume = supabase_client.get_resume(resume_id)
         if not resume:
@@ -169,6 +190,8 @@ async def tailor_resume(
             "tailored": tailored,
             "status": "success"
         }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error tailoring resume: {str(e)}")
 
@@ -302,7 +325,7 @@ async def get_template_preview(template_name: str):
 
 @router.get("/export/{resume_id}")
 async def export_resume(
-    resume_id: str, 
+    resume_id: str = Path(..., description="Resume UUID"),
     version_type: Optional[str] = "latest",
     template: Optional[str] = "default"
 ):
@@ -310,11 +333,20 @@ async def export_resume(
     Export resume as PDF with selected template.
     
     Args:
-        resume_id: Resume ID
+        resume_id: Resume ID (UUID)
         version_type: Version type (latest, improved, tailored)
         template: Template name (default, modern, classic, minimal)
     """
     try:
+        # Validate UUID format
+        try:
+            uuid.UUID(resume_id)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid resume ID format. Expected UUID, got: '{resume_id}'. Please use a valid resume ID."
+            )
+        
         # Get latest resume version
         version = supabase_client.get_latest_resume_version(resume_id, version_type)
         if not version:
@@ -406,6 +438,15 @@ async def calculate_ats_score_endpoint(
     Calculate ATS score for a resume against a job description.
     """
     try:
+        # Validate UUID format
+        try:
+            uuid.UUID(resume_id)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid resume ID format. Expected UUID, got: '{resume_id}'. Please use a valid resume ID."
+            )
+        
         # Get latest resume version
         version = supabase_client.get_latest_resume_version(resume_id, "latest")
         if not version:
@@ -449,15 +490,26 @@ async def calculate_ats_score_endpoint(
         raise HTTPException(status_code=500, detail=f"Error calculating ATS score: {str(e)}")
 
 @router.get("/{resume_id}")
-async def get_resume(resume_id: str):
+async def get_resume(resume_id: str = Path(..., description="Resume UUID")):
     """
     Get resume by ID.
     """
     try:
+        # Validate UUID format
+        try:
+            uuid.UUID(resume_id)
+        except (ValueError, TypeError):
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Invalid resume ID format. Expected UUID, got: '{resume_id}'. Please use a valid resume ID."
+            )
+        
         resume = supabase_client.get_resume(resume_id)
         if not resume:
             raise HTTPException(status_code=404, detail="Resume not found")
         return resume
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error fetching resume: {str(e)}")
 
