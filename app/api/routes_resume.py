@@ -419,23 +419,24 @@ async def export_resume(
                 detail=f"PDF generation failed: {str(e)}"
             )
         
-        # Upload to Supabase storage
+        # Upload to Supabase storage (optional - for future use)
         try:
             url = supabase_client.upload_pdf(resume_id, pdf_bytes, template=template)
             logger.info(f"PDF uploaded to Supabase: {url}")
         except Exception as e:
-            logger.error(f"Supabase upload failed: {str(e)}", exc_info=True)
-            raise HTTPException(
-                status_code=500,
-                detail=f"Failed to upload PDF to storage: {str(e)}"
-            )
+            logger.warning(f"Supabase upload failed (continuing with direct download): {str(e)}")
+            # Continue even if upload fails - we'll return PDF directly
         
-        return {
-            "resume_id": resume_id,
-            "pdf_url": url,
-            "template": template,
-            "status": "success"
-        }
+        # Return PDF directly with correct headers
+        from fastapi.responses import Response
+        
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={
+                "Content-Disposition": f'attachment; filename="resume_{resume_id}_{template}.pdf"'
+            }
+        )
     except HTTPException:
         raise
     except Exception as e:
