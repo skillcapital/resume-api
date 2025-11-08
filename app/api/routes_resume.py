@@ -22,16 +22,24 @@ except Exception as e:
 
 # Import schemas safely
 try:
-    from app.models.schemas import ResumeCreateRequest
+    from app.models.schemas import ResumeCreateRequest, ImproveResumeRequest, TailorResumeRequest, AtsScoreRequest
     SCHEMAS_AVAILABLE = True
 except Exception as e:
     SCHEMAS_AVAILABLE = False
     import sys
     print(f"Warning: Failed to import schemas: {str(e)}", file=sys.stderr)
-    # Create a minimal BaseModel for ResumeCreateRequest
+    # Create minimal BaseModels
     class ResumeCreateRequest(BaseModel):
         name: str
         email: Optional[str] = ""
+    class ImproveResumeRequest(BaseModel):
+        resume_id: str
+    class TailorResumeRequest(BaseModel):
+        resume_id: str
+        job_description: str
+    class AtsScoreRequest(BaseModel):
+        resume_id: str
+        job_description: str
 
 router = APIRouter()
 
@@ -121,12 +129,14 @@ async def upload_resume(file: UploadFile = File(...)):
         raise HTTPException(status_code=500, detail=f"Error processing resume: {str(e)}")
 
 @router.post("/improve")
-async def improve_resume(resume_id: str = Form(...)):
+async def improve_resume(request: ImproveResumeRequest = Body(...)):
     """
     Improve resume using AI.
+    Accepts JSON body: {"resume_id": "uuid-string"}
     """
     import logging
     logger = logging.getLogger(__name__)
+    resume_id = request.resume_id
     logger.info(f"POST /improve endpoint called with resume_id: {resume_id[:50] if resume_id else 'None'}")
     
     try:
@@ -161,14 +171,15 @@ async def improve_resume(resume_id: str = Form(...)):
         raise HTTPException(status_code=500, detail=f"Error improving resume: {str(e)}")
 
 @router.post("/tailor")
-async def tailor_resume(
-    resume_id: str = Form(...),
-    job_description: str = Form(...)
-):
+async def tailor_resume(request: TailorResumeRequest = Body(...)):
     """
     Tailor resume for a specific job description.
+    Accepts JSON body: {"resume_id": "uuid-string", "job_description": "string"}
     """
     try:
+        resume_id = request.resume_id
+        job_description = request.job_description
+        
         # Validate UUID format
         try:
             uuid.UUID(resume_id)
@@ -434,14 +445,15 @@ async def export_resume(
         raise HTTPException(status_code=500, detail=f"Error exporting resume: {str(e)}")
 
 @router.post("/ats-score")
-async def calculate_ats_score_endpoint(
-    resume_id: str = Form(...),
-    job_description: str = Form(...)
-):
+async def calculate_ats_score_endpoint(request: AtsScoreRequest = Body(...)):
     """
     Calculate ATS score for a resume against a job description.
+    Accepts JSON body: {"resume_id": "uuid-string", "job_description": "string"}
     """
     try:
+        resume_id = request.resume_id
+        job_description = request.job_description
+        
         # Validate UUID format
         try:
             uuid.UUID(resume_id)

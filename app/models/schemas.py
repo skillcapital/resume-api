@@ -50,3 +50,14 @@ class ResumeCreateRequest(BaseModel):
     languages: Optional[List[str]] = []
     job_description: Optional[str] = ""
 
+class ImproveResumeRequest(BaseModel):
+    resume_id: str
+
+class TailorResumeRequest(BaseModel):
+    resume_id: str
+    job_description: str
+
+class AtsScoreRequest(BaseModel):
+    resume_id: str
+    job_description: str
+
