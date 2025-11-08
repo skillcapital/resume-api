@@ -493,19 +493,53 @@ async def calculate_ats_score_endpoint(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error calculating ATS score: {str(e)}")
 
+# Explicit GET handlers for action endpoints to prevent catch-all route from matching
+@router.get("/improve")
+async def get_improve_not_allowed():
+    """Prevent GET requests to improve endpoint."""
+    raise HTTPException(
+        status_code=405,
+        detail="Method not allowed. 'improve' is an action endpoint. Use POST /api/v1/resumes/improve instead of GET."
+    )
+
+@router.get("/tailor")
+async def get_tailor_not_allowed():
+    """Prevent GET requests to tailor endpoint."""
+    raise HTTPException(
+        status_code=405,
+        detail="Method not allowed. 'tailor' is an action endpoint. Use POST /api/v1/resumes/tailor instead of GET."
+    )
+
+@router.get("/upload")
+async def get_upload_not_allowed():
+    """Prevent GET requests to upload endpoint."""
+    raise HTTPException(
+        status_code=405,
+        detail="Method not allowed. 'upload' is an action endpoint. Use POST /api/v1/resumes/upload instead of GET."
+    )
+
+@router.get("/create")
+async def get_create_not_allowed():
+    """Prevent GET requests to create endpoint."""
+    raise HTTPException(
+        status_code=405,
+        detail="Method not allowed. 'create' is an action endpoint. Use POST /api/v1/resumes/create instead of GET."
+    )
+
+@router.get("/ats-score")
+async def get_ats_score_not_allowed():
+    """Prevent GET requests to ats-score endpoint."""
+    raise HTTPException(
+        status_code=405,
+        detail="Method not allowed. 'ats-score' is an action endpoint. Use POST /api/v1/resumes/ats-score instead of GET."
+    )
+
 @router.get("/{resume_id}")
 async def get_resume(resume_id: str = Path(..., description="Resume UUID")):
     """
     Get resume by ID.
     """
     try:
-        # Check if this is a known action endpoint (common mistake)
-        known_actions = ["improve", "tailor", "upload", "create", "templates", "export", "ats-score", "preview"]
-        if resume_id.lower() in known_actions:
-            raise HTTPException(
-                status_code=405,
-                detail=f"Method not allowed. '{resume_id}' is an action endpoint. Use POST /api/v1/resumes/{resume_id} instead of GET."
-            )
         
         # Validate UUID format
         try:
