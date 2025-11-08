@@ -125,6 +125,10 @@ async def improve_resume(resume_id: str = Form(...)):
     """
     Improve resume using AI.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info(f"POST /improve endpoint called with resume_id: {resume_id[:50] if resume_id else 'None'}")
+    
     try:
         # Validate UUID format
         try:
