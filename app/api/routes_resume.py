@@ -495,6 +495,14 @@ async def get_resume(resume_id: str = Path(..., description="Resume UUID")):
     Get resume by ID.
     """
     try:
+        # Check if this is a known action endpoint (common mistake)
+        known_actions = ["improve", "tailor", "upload", "create", "templates", "export", "ats-score", "preview"]
+        if resume_id.lower() in known_actions:
+            raise HTTPException(
+                status_code=405,
+                detail=f"Method not allowed. '{resume_id}' is an action endpoint. Use POST /api/v1/resumes/{resume_id} instead of GET."
+            )
+        
         # Validate UUID format
         try:
             uuid.UUID(resume_id)
