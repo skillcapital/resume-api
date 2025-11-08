@@ -189,6 +189,7 @@ async def generate_resume_from_info(personal_info: Dict[str, Any], job_descripti
     Generate a complete resume from personal information using AI.
     """
     try:
+        ChatPromptTemplate = _get_chat_prompt_template()
         prompt_template = ChatPromptTemplate.from_messages([
             ("system", "You are a professional resume writer. Create compelling, ATS-friendly resumes from provided information. Always return valid JSON. If contact fields (email, phone, linkedin, github, website) are provided, include them exactly as given; otherwise return empty strings for those fields."),
             ("human", """
@@ -361,6 +362,7 @@ Experiences:
         for edu in resume_data.get('education', []):
             resume_text += f"- {edu.get('degree', '')} from {edu.get('institution', '')}\n"
         
+        ChatPromptTemplate = _get_chat_prompt_template()
         prompt_template = ChatPromptTemplate.from_messages([
             ("system", "You are an expert ATS (Applicant Tracking System) analyzer. Analyze resumes against job descriptions and provide detailed scoring. Always return valid JSON."),
             ("human", """
