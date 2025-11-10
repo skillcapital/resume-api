@@ -1,4 +1,4 @@
-from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Body, Path
+from fastapi import APIRouter, UploadFile, File, Form, HTTPException, Body, Path, Request
 from typing import Optional, Dict, Any
 import json
 import uuid
@@ -110,6 +110,7 @@ async def create_resume_from_form(resume_data: ResumeCreateRequest = Body(...)):
 
 @router.post("/upload")
 async def upload_resume(
+    request: Request,
     file: Optional[UploadFile] = File(None),
     pdf: Optional[UploadFile] = File(None),
     document: Optional[UploadFile] = File(None),
@@ -119,10 +120,26 @@ async def upload_resume(
     Upload a PDF resume and extract text.
     Accepts file with field name: 'file', 'pdf', 'document', or 'resume'
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    # Debug: Log what we received
+    logger.info(f"Upload endpoint called - file: {file is not None}, pdf: {pdf is not None}, document: {document is not None}, resume: {resume is not None}")
+    
     # Try to get file from any of the accepted field names
     upload_file = file or pdf or document or resume
     
     if not upload_file:
+        # Additional debugging - try to get form data
+        try:
+            form_data = await request.form()
+            received_keys = list(form_data.keys()) if hasattr(form_data, 'keys') else []
+            logger.warning(f"Received form data keys: {received_keys}")
+            logger.warning(f"Content-Type header: {request.headers.get('content-type', 'Not set')}")
+        except Exception as e:
+            logger.warning(f"Could not inspect form data: {str(e)}")
+        
+        logger.error("No file received in upload request")
         raise HTTPException(
             status_code=422,
             detail={
