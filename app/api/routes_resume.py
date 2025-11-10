@@ -109,13 +109,42 @@ async def create_resume_from_form(resume_data: ResumeCreateRequest = Body(...)):
         raise HTTPException(status_code=500, detail=f"Error creating resume: {str(e)}")
 
 @router.post("/upload")
-async def upload_resume(file: UploadFile = File(...)):
+async def upload_resume(
+    file: Optional[UploadFile] = File(None),
+    pdf: Optional[UploadFile] = File(None),
+    document: Optional[UploadFile] = File(None),
+    resume: Optional[UploadFile] = File(None)
+):
     """
     Upload a PDF resume and extract text.
+    Accepts file with field name: 'file', 'pdf', 'document', or 'resume'
     """
+    # Try to get file from any of the accepted field names
+    upload_file = file or pdf or document or resume
+    
+    if not upload_file:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": "File is required",
+                "message": "Please send a PDF file with one of these field names: 'file', 'pdf', 'document', or 'resume'",
+                "accepted_field_names": ["file", "pdf", "document", "resume"],
+                "example": {
+                    "frontend_code": "const formData = new FormData(); formData.append('file', pdfFile);"
+                }
+            }
+        )
+    
+    # Validate file type
+    if upload_file.content_type not in ["application/pdf", "application/x-pdf"]:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid file type. Expected PDF, got: {upload_file.content_type}. Please upload a PDF file."
+        )
+    
     try:
         # Extract text from PDF
-        text = await pdf_parser.extract_text(file)
+        text = await pdf_parser.extract_text(upload_file)
         
         # Save to Supabase
         resume_id = supabase_client.save_resume_raw(text)
