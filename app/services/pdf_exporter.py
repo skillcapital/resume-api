@@ -67,6 +67,14 @@ def render_pdf(data: Dict[str, Any], template_name: str = "default") -> bytes:
         # Normalize data
         normalized_data = normalize_resume_data(data)
         
+        # Debug logging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.info(f"Normalized data keys: {list(normalized_data.keys())}")
+        logger.info(f"Normalized projects: {normalized_data.get('projects', [])}")
+        logger.info(f"Normalized certifications: {normalized_data.get('certifications', [])}")
+        logger.info(f"Normalized languages: {normalized_data.get('languages', [])}")
+        
         # Create PDF buffer
         buffer = BytesIO()
         doc = SimpleDocTemplate(buffer, pagesize=letter, topMargin=0.5*inch, bottomMargin=0.5*inch)
@@ -177,23 +185,42 @@ def render_pdf(data: Dict[str, Any], template_name: str = "default") -> bytes:
         
         # Projects
         projects = normalized_data.get('projects', [])
-        if projects:
+        # CRITICAL: Ensure projects is a list
+        if not isinstance(projects, list):
+            projects = []
+        logger.info(f"PDF Renderer - Projects: {projects}, Type: {type(projects)}, Length: {len(projects)}")
+        if projects and len(projects) > 0:
             story.append(Paragraph('<b>Projects</b>', heading_style))
             for project in projects:
                 if isinstance(project, dict):
                     name = project.get('name', '')
                     desc = project.get('description', '')
+                    technologies = project.get('technologies', '')
+                    url = project.get('url', '')
+                    
                     if name:
-                        story.append(Paragraph(f"<b>{escape(name)}</b>", normal_style))
+                        project_text = f"<b>{escape(name)}</b>"
+                        if technologies:
+                            project_text += f" - {escape(str(technologies))}"
+                        story.append(Paragraph(project_text, normal_style))
                     if desc:
                         story.append(Paragraph(escape(desc), normal_style))
+                    if url:
+                        story.append(Paragraph(f"URL: {escape(url)}", normal_style))
                 else:
                     story.append(Paragraph(escape(str(project)), normal_style))
                 story.append(Spacer(1, 0.1*inch))
+            story.append(Spacer(1, 0.1*inch))
+        else:
+            logger.warning(f"Projects section skipped - projects is empty or falsy: {projects}")
         
         # Certifications
         certifications = normalized_data.get('certifications', [])
-        if certifications:
+        # CRITICAL: Ensure certifications is a list
+        if not isinstance(certifications, list):
+            certifications = []
+        logger.info(f"PDF Renderer - Certifications: {certifications}, Type: {type(certifications)}, Length: {len(certifications)}")
+        if certifications and len(certifications) > 0:
             story.append(Paragraph('<b>Certifications</b>', heading_style))
             for cert in certifications:
                 if isinstance(cert, dict):
@@ -208,6 +235,40 @@ def render_pdf(data: Dict[str, Any], template_name: str = "default") -> bytes:
                     story.append(Paragraph(cert_text, normal_style))
                 else:
                     story.append(Paragraph(escape(str(cert)), normal_style))
+            story.append(Spacer(1, 0.1*inch))
+        else:
+            logger.warning(f"Certifications section skipped - certifications is empty or falsy: {certifications}")
+        
+        # Languages
+        languages = normalized_data.get('languages', [])
+        # CRITICAL: Ensure languages is a list
+        if not isinstance(languages, list):
+            languages = []
+        logger.info(f"PDF Renderer - Languages: {languages}, Type: {type(languages)}, Length: {len(languages)}")
+        if languages and len(languages) > 0:
+            story.append(Paragraph('<b>Languages</b>', heading_style))
+            # Handle both string and dict formats
+            lang_strings = []
+            for lang in languages:
+                if isinstance(lang, str):
+                    lang_strings.append(lang)
+                elif isinstance(lang, dict):
+                    name = lang.get('name', lang.get('language', ''))
+                    level = lang.get('level', lang.get('proficiency', ''))
+                    if name:
+                        lang_text = escape(str(name))
+                        if level:
+                            lang_text += f" ({escape(str(level))})"
+                        lang_strings.append(lang_text)
+                else:
+                    lang_strings.append(escape(str(lang)))
+            
+            if lang_strings:
+                languages_text = ', '.join(lang_strings)
+                story.append(Paragraph(languages_text, normal_style))
+                story.append(Spacer(1, 0.1*inch))
+        else:
+            logger.warning(f"Languages section skipped - languages is empty or falsy: {languages}")
         
         # Build PDF
         doc.build(story)
@@ -229,6 +290,12 @@ def normalize_resume_data(data: Dict[str, Any]) -> Dict[str, Any]:
     """
     normalized = {}
     
+    # CRITICAL: Ensure projects, certifications, and languages are always present as lists
+    # Initialize them first to ensure they're never missing
+    normalized['projects'] = []
+    normalized['certifications'] = []
+    normalized['languages'] = []
+    
     # Copy all top-level fields
     for key, value in data.items():
         if key == 'experiences' and isinstance(value, list):
@@ -238,10 +305,49 @@ def normalize_resume_data(data: Dict[str, Any]) -> Dict[str, Any]:
             # Normalize education entries
             normalized[key] = [normalize_education(edu) for edu in value]
         elif key == 'skills' and isinstance(value, list):
-            # Filter out empty skills
-            normalized[key] = [skill for skill in value if skill and str(skill).strip()]
+            # Filter out empty skills and convert to strings
+            normalized[key] = [str(skill) if not isinstance(skill, str) else skill 
+                             for skill in value if skill and str(skill).strip()]
+        elif key == 'projects':
+            # CRITICAL FIX: Always process projects, even if None or empty
+            if value is None:
+                normalized[key] = []
+            elif isinstance(value, list):
+                # Normalize projects - ensure they're dicts with proper structure
+                normalized[key] = [normalize_project(proj) for proj in value]
+            else:
+                # Convert non-list to list
+                normalized[key] = [normalize_project(value)]
+        elif key == 'certifications':
+            # CRITICAL FIX: Always process certifications, even if None or empty
+            if value is None:
+                normalized[key] = []
+            elif isinstance(value, list):
+                # Normalize certifications - convert strings to dicts if needed
+                normalized[key] = [normalize_certification(cert) for cert in value]
+            else:
+                # Convert non-list to list
+                normalized[key] = [normalize_certification(value)]
+        elif key == 'languages':
+            # CRITICAL FIX: Always process languages, even if None or empty
+            if value is None:
+                normalized[key] = []
+            elif isinstance(value, list):
+                # Normalize languages - ensure they're in proper format
+                normalized[key] = [lang for lang in value]
+            else:
+                # Convert non-list to list
+                normalized[key] = [value]
         else:
             normalized[key] = value
+    
+    # Final safety check - ensure these fields are always lists
+    if not isinstance(normalized.get('projects'), list):
+        normalized['projects'] = []
+    if not isinstance(normalized.get('certifications'), list):
+        normalized['certifications'] = []
+    if not isinstance(normalized.get('languages'), list):
+        normalized['languages'] = []
     
     return normalized
 
@@ -281,4 +387,47 @@ def normalize_education(edu: Any) -> Dict[str, Any]:
             "degree": getattr(edu, "degree", "") or "",
             "institution": getattr(edu, "institution", "") or "",
             "year": getattr(edu, "year", "") or ""
+        }
+
+def normalize_project(proj: Any) -> Dict[str, Any]:
+    """Normalize a single project entry."""
+    if isinstance(proj, str):
+        return {"name": proj, "description": "", "technologies": "", "url": ""}
+    elif isinstance(proj, dict):
+        # Handle technologies as string or list
+        technologies = proj.get("technologies", "")
+        if isinstance(technologies, list):
+            technologies = ", ".join([str(t) for t in technologies if t])
+        return {
+            "name": proj.get("name", "") or "",
+            "description": proj.get("description", "") or "",
+            "technologies": str(technologies) if technologies else "",
+            "url": proj.get("url", "") or ""
+        }
+    else:
+        return {
+            "name": getattr(proj, "name", "") or "",
+            "description": getattr(proj, "description", "") or "",
+            "technologies": str(getattr(proj, "technologies", "")) or "",
+            "url": getattr(proj, "url", "") or ""
+        }
+
+def normalize_certification(cert: Any) -> Dict[str, Any]:
+    """Normalize a single certification entry."""
+    if isinstance(cert, str):
+        # If it's just a string, return as dict with name
+        return {"name": cert, "issuer": "", "year": ""}
+    elif isinstance(cert, dict):
+        # If it's already a dict, ensure all fields are present
+        return {
+            "name": cert.get("name", cert.get("certification", str(cert.get("name", "")))) or "",
+            "issuer": cert.get("issuer", cert.get("issuing_organization", cert.get("issuer", ""))) or "",
+            "year": cert.get("year", "") or ""
+        }
+    else:
+        # Convert anything else to string and use as name
+        return {
+            "name": str(cert) if cert else "",
+            "issuer": "",
+            "year": ""
         }

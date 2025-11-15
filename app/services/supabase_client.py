@@ -36,6 +36,17 @@ def save_resume_version(resume_id: str, content: Dict[str, Any], version_type: s
     if not supabase:
         raise Exception("Supabase client not initialized. Check your .env file.")
     
+    # Validate UUID format
+    try:
+        uuid.UUID(resume_id)
+    except (ValueError, TypeError):
+        raise Exception(f"Invalid resume ID format: '{resume_id}'. Resume ID must be a valid UUID.")
+    
+    # Check if resume exists before saving version
+    resume = get_resume(resume_id)
+    if not resume:
+        raise Exception(f"Resume not found. Resume ID '{resume_id}' does not exist in the database. Please create the resume first using /api/v1/resumes/create or /api/v1/resumes/upload.")
+    
     try:
         supabase.table("resume_versions").insert({
             "resume_id": resume_id,
@@ -44,7 +55,11 @@ def save_resume_version(resume_id: str, content: Dict[str, Any], version_type: s
             "created_at": datetime.utcnow().isoformat()
         }).execute()
     except Exception as e:
-        raise Exception(f"Error saving resume version: {str(e)}")
+        error_msg = str(e)
+        # Check for foreign key constraint violation
+        if "foreign key constraint" in error_msg.lower() or "23503" in error_msg:
+            raise Exception(f"Resume not found. Resume ID '{resume_id}' does not exist in the database. Please create the resume first using /api/v1/resumes/create or /api/v1/resumes/upload.")
+        raise Exception(f"Error saving resume version: {error_msg}")
 
 def get_resume(resume_id: str) -> Optional[Dict[str, Any]]:
     """

@@ -110,9 +110,328 @@ Resume text:
     except Exception as e:
         raise Exception(f"Error improving resume with AI: {str(e)}")
 
+async def improve_resume_with_data(
+    resume_data: Dict[str, Any], 
+    improvement_context: str = "",
+    tone: str = "professional"
+) -> Dict[str, Any]:
+    """
+    Improve resume using AI with structured data (better than raw text).
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        ChatPromptTemplate = _get_chat_prompt_template()
+        
+        # Build structured context from resume data
+        context_parts = []
+        
+        if resume_data.get("name"):
+            context_parts.append(f"Name: {resume_data.get('name')}")
+        if resume_data.get("email"):
+            context_parts.append(f"Email: {resume_data.get('email')}")
+        if resume_data.get("phone"):
+            context_parts.append(f"Phone: {resume_data.get('phone')}")
+        if resume_data.get("linkedin"):
+            context_parts.append(f"LinkedIn: {resume_data.get('linkedin')}")
+        if resume_data.get("github"):
+            context_parts.append(f"GitHub: {resume_data.get('github')}")
+        if resume_data.get("website"):
+            context_parts.append(f"Website: {resume_data.get('website')}")
+        
+        if resume_data.get("summary"):
+            context_parts.append(f"\nSummary:\n{resume_data.get('summary')}")
+        
+        # Format experiences
+        if resume_data.get("experiences"):
+            context_parts.append("\nWork Experience:")
+            for exp in resume_data.get("experiences", []):
+                exp_text = f"- {exp.get('title', '')} at {exp.get('company', '')}"
+                if exp.get('period'):
+                    exp_text += f" ({exp.get('period')})"
+                context_parts.append(exp_text)
+                if exp.get('description'):
+                    context_parts.append(f"  Description: {exp.get('description')}")
+                if exp.get('achievements'):
+                    for ach in exp.get('achievements', []):
+                        context_parts.append(f"  • {ach}")
+        
+        # Format education
+        if resume_data.get("education"):
+            context_parts.append("\nEducation:")
+            for edu in resume_data.get("education", []):
+                edu_text = f"- {edu.get('degree', '')} from {edu.get('institution', '')}"
+                if edu.get('year'):
+                    edu_text += f" ({edu.get('year')})"
+                if edu.get('gpa'):
+                    edu_text += f" - GPA: {edu.get('gpa')}"
+                context_parts.append(edu_text)
+        
+        # Format skills - handle both strings and objects
+        if resume_data.get("skills"):
+            skills_list = resume_data.get('skills', [])
+            # Convert to strings if needed
+            skills_strings = []
+            for skill in skills_list:
+                if isinstance(skill, str):
+                    skills_strings.append(skill)
+                elif isinstance(skill, dict):
+                    # If skill is a dict, try to get name or just convert to string
+                    skills_strings.append(str(skill.get('name', skill.get('skill', str(skill)))))
+                else:
+                    skills_strings.append(str(skill))
+            if skills_strings:
+                context_parts.append(f"\nSkills: {', '.join(skills_strings)}")
+        
+        # Format projects
+        if resume_data.get("projects"):
+            context_parts.append("\nProjects:")
+            for proj in resume_data.get("projects", []):
+                # Handle both dict and string project formats
+                if isinstance(proj, str):
+                    context_parts.append(f"- {proj}")
+                elif isinstance(proj, dict):
+                    proj_text = f"- {proj.get('name', 'Project')}"
+                    if proj.get('description'):
+                        proj_text += f": {proj.get('description')}"
+                    if proj.get('technologies'):
+                        tech_list = proj.get('technologies')
+                        if isinstance(tech_list, list):
+                            # Convert technologies to strings
+                            tech_strings = []
+                            for tech in tech_list:
+                                if isinstance(tech, str):
+                                    tech_strings.append(tech)
+                                elif isinstance(tech, dict):
+                                    tech_strings.append(str(tech.get('name', tech.get('technology', str(tech)))))
+                                else:
+                                    tech_strings.append(str(tech))
+                            if tech_strings:
+                                proj_text += f" (Tech: {', '.join(tech_strings)})"
+                        else:
+                            proj_text += f" (Tech: {str(tech_list)})"
+                    context_parts.append(proj_text)
+                else:
+                    context_parts.append(f"- {str(proj)}")
+        
+        # Format certifications - handle both strings and objects
+        if resume_data.get("certifications"):
+            certs_list = resume_data.get('certifications', [])
+            if isinstance(certs_list, list):
+                # Convert to strings if needed
+                cert_strings = []
+                for cert in certs_list:
+                    if isinstance(cert, str):
+                        cert_strings.append(cert)
+                    elif isinstance(cert, dict):
+                        # If cert is a dict, try to get name or just convert to string
+                        cert_strings.append(str(cert.get('name', cert.get('certification', str(cert)))))
+                    else:
+                        cert_strings.append(str(cert))
+                if cert_strings:
+                    context_parts.append(f"\nCertifications: {', '.join(cert_strings)}")
+            else:
+                context_parts.append(f"\nCertifications: {str(certs_list)}")
+        
+        # Format languages - handle both strings and objects
+        if resume_data.get("languages"):
+            langs_list = resume_data.get('languages', [])
+            if isinstance(langs_list, list):
+                # Convert to strings if needed
+                lang_strings = []
+                for lang in langs_list:
+                    if isinstance(lang, str):
+                        lang_strings.append(lang)
+                    elif isinstance(lang, dict):
+                        # If lang is a dict, try to get name or just convert to string
+                        lang_strings.append(str(lang.get('name', lang.get('language', str(lang)))))
+                    else:
+                        lang_strings.append(str(lang))
+                if lang_strings:
+                    context_parts.append(f"\nLanguages: {', '.join(lang_strings)}")
+            else:
+                context_parts.append(f"\nLanguages: {str(langs_list)}")
+        
+        # Fallback to raw_text if no structured data
+        if not context_parts and resume_data.get("raw_text"):
+            context_parts.append(resume_data.get("raw_text"))
+        
+        structured_context = "\n".join(context_parts)
+        
+        # Build prompt with tone and improvement context
+        tone_instruction = f"Write in a {tone} tone." if tone != "professional" else "Write in a professional tone."
+        
+        # Build the prompt message directly using f-strings to avoid template variable conflicts
+        # Then escape curly braces for LangChain template (use {{ and }} for literal braces)
+        json_example_text = """{
+    "name": "Full Name",
+    "email": "",
+    "phone": "",
+    "linkedin": "",
+    "github": "",
+    "website": "",
+    "summary": "2-3 sentence professional summary highlighting key achievements and value proposition",
+    "experiences": [
+        {
+            "title": "Job Title",
+            "company": "Company Name",
+            "period": "Start Date - End Date",
+            "bullets": ["Achievement 1 with quantifiable metrics", "Achievement 2 with metrics", "Achievement 3 with impact"]
+        }
+    ],
+    "skills": ["Technical Skill 1", "Technical Skill 2", "Technical Skill 3", "Technical Skill 4", "Technical Skill 5", "Technical Skill 6", "Technical Skill 7", "Technical Skill 8"],
+    "education": [
+        {
+            "degree": "Degree Name",
+            "institution": "Institution Name",
+            "year": "Year",
+            "gpa": "GPA if notable"
+        }
+    ],
+    "projects": [
+        {
+            "name": "Project Name",
+            "description": "Project description with impact",
+            "technologies": "Tech stack used"
+        }
+    ],
+    "certifications": [
+        {
+            "name": "Certification Name",
+            "issuer": "Issuing Organization",
+            "year": "Year"
+        }
+    ],
+    "languages": ["Language 1", "Language 2", "Language 3"]
+}"""
+        
+        # Build the full human message with f-string, then escape for LangChain template
+        human_message_content = f"""Improve and enhance this resume to make it more professional, impactful, and ATS-friendly.
+
+{tone_instruction}
+
+{improvement_context}
+
+Return valid JSON with the following structure:
+{json_example_text}
+
+IMPORTANT: 
+- Extract and list ALL skills mentioned
+- Create impactful, metric-driven bullet points
+- Preserve all contact information exactly as provided
+- Make the summary compelling and ATS-optimized
+- Enhance achievements with quantifiable metrics where possible
+- Keep all factual information accurate
+- Include ALL projects, certifications, and languages from the original resume data
+- Preserve all projects, certifications, and languages exactly as provided
+
+Resume data:
+{structured_context}
+"""
+        
+        # Escape curly braces for LangChain template ({{ becomes {, }} becomes })
+        human_message_template = human_message_content.replace("{", "{{").replace("}", "}}")
+        # But we need {structured_context} to remain as a variable, so restore it
+        human_message_template = human_message_template.replace("{{{{structured_context}}}}", "{structured_context}")
+        
+        prompt_template = ChatPromptTemplate.from_messages([
+            ("system", f"You are a professional resume writer. Rewrite resumes to be concise, measurable, and action-driven. {tone_instruction} Always return valid JSON."),
+            ("human", human_message_template)
+        ])
+        
+        chain = prompt_template | get_llm()
+        
+        logger.info(f"Invoking AI with structured_context length: {len(structured_context)}")
+        
+        response = await chain.ainvoke({"structured_context": structured_context})
+        
+        # Parse response
+        content = response.content.strip()
+        
+        # Remove markdown code blocks if present
+        if content.startswith("```json"):
+            content = content[7:]
+        if content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        
+        content = content.strip()
+        
+        # Parse JSON
+        improved_data = json.loads(content)
+        
+        # Preserve contact info from original data
+        if resume_data.get("email"):
+            improved_data["email"] = resume_data.get("email")
+        if resume_data.get("phone"):
+            improved_data["phone"] = resume_data.get("phone")
+        if resume_data.get("linkedin"):
+            improved_data["linkedin"] = resume_data.get("linkedin")
+        if resume_data.get("github"):
+            improved_data["github"] = resume_data.get("github")
+        if resume_data.get("website"):
+            improved_data["website"] = resume_data.get("website")
+        
+        # CRITICAL FIX: Always preserve projects, certifications, and languages from original data
+        # Priority: Original data > AI response > Empty list
+        # This ensures we never lose data that was in the original resume
+        
+        # Projects: Use original if it exists and has data, otherwise use AI response, otherwise empty
+        if resume_data.get("projects") and len(resume_data.get("projects", [])) > 0:
+            # Original has projects with data - always preserve them
+            improved_data["projects"] = resume_data.get("projects")
+            logger.info(f"Preserved {len(resume_data.get('projects', []))} projects from original data")
+        elif "projects" not in improved_data:
+            # Not in original and not in AI response - initialize as empty
+            improved_data["projects"] = []
+        # If AI response has projects, keep them (but they might be empty, which will be fixed in the endpoint)
+        
+        # Certifications: Use original if it exists and has data, otherwise use AI response, otherwise empty
+        if resume_data.get("certifications") and len(resume_data.get("certifications", [])) > 0:
+            # Original has certifications with data - always preserve them
+            improved_data["certifications"] = resume_data.get("certifications")
+            logger.info(f"Preserved {len(resume_data.get('certifications', []))} certifications from original data")
+        elif "certifications" not in improved_data:
+            # Not in original and not in AI response - initialize as empty
+            improved_data["certifications"] = []
+        # If AI response has certifications, keep them (but they might be empty, which will be fixed in the endpoint)
+        
+        # Languages: Use original if it exists and has data, otherwise use AI response, otherwise empty
+        if resume_data.get("languages") and len(resume_data.get("languages", [])) > 0:
+            # Original has languages with data - always preserve them
+            improved_data["languages"] = resume_data.get("languages")
+            logger.info(f"Preserved {len(resume_data.get('languages', []))} languages from original data")
+        elif "languages" not in improved_data:
+            # Not in original and not in AI response - initialize as empty
+            improved_data["languages"] = []
+        # If AI response has languages, keep them (but they might be empty, which will be fixed in the endpoint)
+        
+        # Final safety check - ensure they're always lists
+        if not isinstance(improved_data.get("projects"), list):
+            improved_data["projects"] = []
+        if not isinstance(improved_data.get("certifications"), list):
+            improved_data["certifications"] = []
+        if not isinstance(improved_data.get("languages"), list):
+            improved_data["languages"] = []
+        
+        logger.info(f"Final improved_data keys: {list(improved_data.keys())}")
+        logger.info(f"Final projects: {improved_data.get('projects', [])}")
+        logger.info(f"Final certifications: {improved_data.get('certifications', [])}")
+        logger.info(f"Final languages: {improved_data.get('languages', [])}")
+        
+        return improved_data
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        logger.error(f"Error in improve_resume_with_data: {str(e)}")
+        logger.error(f"Full traceback:\n{error_traceback}")
+        raise Exception(f"Error improving resume with AI: {str(e)}")
+
 async def tailor_resume(resume: Dict[str, Any], job_description: str) -> Dict[str, Any]:
     """
-    Tailor resume for a specific job description.
+    Tailor resume for a specific job description (legacy function using raw text).
     """
     try:
         raw_text = resume.get("raw_text", "")
@@ -182,6 +501,221 @@ Return tailored JSON with improved summary and relevant experiences only.
         
         return tailored_data
     except Exception as e:
+        raise Exception(f"Error tailoring resume with AI: {str(e)}")
+
+async def tailor_resume_with_data(resume_data: Dict[str, Any], job_description: str) -> Dict[str, Any]:
+    """
+    Tailor resume for a specific job description using structured data (better than raw text).
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        ChatPromptTemplate = _get_chat_prompt_template()
+        
+        # Build structured context from resume data
+        context_parts = []
+        
+        if resume_data.get("name"):
+            context_parts.append(f"Name: {resume_data.get('name')}")
+        if resume_data.get("email"):
+            context_parts.append(f"Email: {resume_data.get('email')}")
+        if resume_data.get("phone"):
+            context_parts.append(f"Phone: {resume_data.get('phone')}")
+        if resume_data.get("linkedin"):
+            context_parts.append(f"LinkedIn: {resume_data.get('linkedin')}")
+        if resume_data.get("github"):
+            context_parts.append(f"GitHub: {resume_data.get('github')}")
+        if resume_data.get("website"):
+            context_parts.append(f"Website: {resume_data.get('website')}")
+        
+        if resume_data.get("summary"):
+            context_parts.append(f"\nSummary:\n{resume_data.get('summary')}")
+        
+        # Format experiences
+        if resume_data.get("experiences"):
+            context_parts.append("\nWork Experience:")
+            for exp in resume_data.get("experiences", []):
+                exp_text = f"- {exp.get('title', '')} at {exp.get('company', '')}"
+                if exp.get('period'):
+                    exp_text += f" ({exp.get('period')})"
+                context_parts.append(exp_text)
+                if exp.get('bullets'):
+                    for bullet in exp.get('bullets', []):
+                        context_parts.append(f"  • {bullet}")
+                elif exp.get('description'):
+                    context_parts.append(f"  Description: {exp.get('description')}")
+        
+        # Format education
+        if resume_data.get("education"):
+            context_parts.append("\nEducation:")
+            for edu in resume_data.get("education", []):
+                edu_text = f"- {edu.get('degree', '')} from {edu.get('institution', '')}"
+                if edu.get('year'):
+                    edu_text += f" ({edu.get('year')})"
+                if edu.get('gpa'):
+                    edu_text += f" - GPA: {edu.get('gpa')}"
+                context_parts.append(edu_text)
+        
+        # Format skills
+        if resume_data.get("skills"):
+            skills_list = resume_data.get('skills', [])
+            skills_strings = []
+            for skill in skills_list:
+                if isinstance(skill, str):
+                    skills_strings.append(skill)
+                elif isinstance(skill, dict):
+                    skills_strings.append(str(skill.get('name', skill.get('skill', str(skill)))))
+                else:
+                    skills_strings.append(str(skill))
+            if skills_strings:
+                context_parts.append(f"\nSkills: {', '.join(skills_strings)}")
+        
+        # Fallback to raw_text if no structured data
+        if not context_parts and resume_data.get("raw_text"):
+            context_parts.append(resume_data.get("raw_text"))
+        
+        structured_context = "\n".join(context_parts)
+        
+        # Build prompt
+        json_example_text = """{
+    "name": "Full Name",
+    "email": "",
+    "phone": "",
+    "linkedin": "",
+    "github": "",
+    "website": "",
+    "summary": "Tailored 2-3 sentence summary matching job requirements",
+    "experiences": [
+        {
+            "title": "Job Title",
+            "company": "Company Name",
+            "period": "Start Date - End Date",
+            "bullets": ["Relevant achievement 1 with metrics", "Relevant achievement 2 with metrics"]
+        }
+    ],
+    "skills": ["Relevant Skill 1", "Relevant Skill 2", "Relevant Skill 3"],
+    "education": [
+        {
+            "degree": "Degree Name",
+            "institution": "Institution Name",
+            "year": "Year"
+        }
+    ]
+}"""
+        
+        human_message_content = f"""Tailor this resume for the given job description. Highlight relevant experiences and skills that match the job requirements.
+
+Return valid JSON with the following structure:
+{json_example_text}
+
+IMPORTANT: 
+- Include ALL skills from the original resume that are relevant to the job
+- Prioritize skills mentioned in the job description
+- Tailor the summary to match job requirements
+- Highlight relevant experiences and achievements
+
+Resume data:
+{structured_context}
+
+Job Description:
+{job_description}
+
+Return tailored JSON with improved summary and relevant experiences.
+"""
+        
+        # Escape curly braces for LangChain template
+        human_message_template = human_message_content.replace("{", "{{").replace("}", "}}")
+        human_message_template = human_message_template.replace("{{{{structured_context}}}}", "{{structured_context}}")
+        human_message_template = human_message_template.replace("{{{{job_description}}}}", "{{job_description}}")
+        
+        prompt_template = ChatPromptTemplate.from_messages([
+            ("system", "You are a professional resume writer specializing in ATS optimization. Tailor resumes to match job descriptions perfectly. Always return valid JSON."),
+            ("human", human_message_template)
+        ])
+        
+        chain = prompt_template | get_llm()
+        
+        logger.info(f"Invoking AI for tailoring with structured_context length: {len(structured_context)}")
+        
+        response = await chain.ainvoke({
+            "structured_context": structured_context,
+            "job_description": job_description
+        })
+        
+        # Parse response
+        content = response.content.strip()
+        
+        # Remove markdown code blocks if present
+        if content.startswith("```json"):
+            content = content[7:]
+        if content.startswith("```"):
+            content = content[3:]
+        if content.endswith("```"):
+            content = content[:-3]
+        
+        content = content.strip()
+        
+        # Parse JSON
+        tailored_data = json.loads(content)
+        
+        # Preserve contact info from original data
+        if resume_data.get("email"):
+            tailored_data["email"] = resume_data.get("email")
+        if resume_data.get("phone"):
+            tailored_data["phone"] = resume_data.get("phone")
+        if resume_data.get("linkedin"):
+            tailored_data["linkedin"] = resume_data.get("linkedin")
+        if resume_data.get("github"):
+            tailored_data["github"] = resume_data.get("github")
+        if resume_data.get("website"):
+            tailored_data["website"] = resume_data.get("website")
+        
+        # CRITICAL FIX: Always preserve projects, certifications, and languages from original data
+        # Priority: Original data > AI response > Empty list
+        if resume_data.get("projects") and len(resume_data.get("projects", [])) > 0:
+            # Original has projects with data - always preserve them
+            tailored_data["projects"] = resume_data.get("projects")
+            logger.info(f"Preserved {len(resume_data.get('projects', []))} projects from original data")
+        elif "projects" not in tailored_data:
+            # Not in original and not in AI response - initialize as empty
+            tailored_data["projects"] = []
+        
+        if resume_data.get("certifications") and len(resume_data.get("certifications", [])) > 0:
+            # Original has certifications with data - always preserve them
+            tailored_data["certifications"] = resume_data.get("certifications")
+            logger.info(f"Preserved {len(resume_data.get('certifications', []))} certifications from original data")
+        elif "certifications" not in tailored_data:
+            # Not in original and not in AI response - initialize as empty
+            tailored_data["certifications"] = []
+        
+        if resume_data.get("languages") and len(resume_data.get("languages", [])) > 0:
+            # Original has languages with data - always preserve them
+            tailored_data["languages"] = resume_data.get("languages")
+            logger.info(f"Preserved {len(resume_data.get('languages', []))} languages from original data")
+        elif "languages" not in tailored_data:
+            # Not in original and not in AI response - initialize as empty
+            tailored_data["languages"] = []
+        
+        # Final safety check - ensure they're always lists
+        if not isinstance(tailored_data.get("projects"), list):
+            tailored_data["projects"] = []
+        if not isinstance(tailored_data.get("certifications"), list):
+            tailored_data["certifications"] = []
+        if not isinstance(tailored_data.get("languages"), list):
+            tailored_data["languages"] = []
+        
+        logger.info(f"Final tailored_data keys: {list(tailored_data.keys())}")
+        logger.info(f"Final projects: {tailored_data.get('projects', [])}")
+        logger.info(f"Final certifications: {tailored_data.get('certifications', [])}")
+        logger.info(f"Final languages: {tailored_data.get('languages', [])}")
+        
+        return tailored_data
+    except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        logger.error(f"Error in tailor_resume_with_data: {str(e)}")
+        logger.error(f"Full traceback:\n{error_traceback}")
         raise Exception(f"Error tailoring resume with AI: {str(e)}")
 
 async def generate_resume_from_info(personal_info: Dict[str, Any], job_description: Optional[str] = None) -> Dict[str, Any]:
@@ -260,7 +794,8 @@ Return valid JSON with the following structure:
             "issuer": "Issuing Organization",
             "year": "Year"
         }}
-    ]
+    ],
+    "languages": ["Language 1", "Language 2"]
 }}
 
 IMPORTANT: 
@@ -268,7 +803,8 @@ IMPORTANT:
 - Create impactful, metric-driven bullet points
 - If job description is provided, tailor the resume for that specific role
 - Make the summary compelling and ATS-optimized
- - Preserve provided contact information exactly; do not invent contact details
+- Preserve provided contact information exactly; do not invent contact details
+- Include ALL projects, certifications, and languages from the provided information
 """)
         ])
         
@@ -311,10 +847,10 @@ IMPORTANT:
             "summary": personal_info.get("summary", ""),
             "experiences": exp_text or "None provided",
             "education": edu_text or "None provided",
-            "skills": ", ".join(personal_info.get("skills", [])) or "None provided",
+            "skills": ", ".join([str(s) if isinstance(s, str) else str(s.get('name', s.get('skill', s))) if isinstance(s, dict) else str(s) for s in personal_info.get("skills", [])]) or "None provided",
             "projects": proj_text or "None provided",
-            "certifications": ", ".join(personal_info.get("certifications", [])) or "None provided",
-            "languages": ", ".join(personal_info.get("languages", [])) or "None provided",
+            "certifications": ", ".join([str(c) if isinstance(c, str) else str(c.get('name', c.get('certification', c))) if isinstance(c, dict) else str(c) for c in personal_info.get("certifications", [])]) or "None provided",
+            "languages": ", ".join([str(l) if isinstance(l, str) else str(l.get('name', l.get('language', l))) if isinstance(l, dict) else str(l) for l in personal_info.get("languages", [])]) or "None provided",
             "job_context": job_context
         })
         
@@ -345,11 +881,22 @@ async def calculate_ats_score(resume_data: Dict[str, Any], job_description: str)
     """
     try:
         # Format resume data for analysis
+        # Convert skills to strings if needed
+        skills_list = resume_data.get('skills', [])
+        skills_strings = []
+        for skill in skills_list:
+            if isinstance(skill, str):
+                skills_strings.append(skill)
+            elif isinstance(skill, dict):
+                skills_strings.append(str(skill.get('name', skill.get('skill', str(skill)))))
+            else:
+                skills_strings.append(str(skill))
+        
         resume_text = f"""
 Name: {resume_data.get('name', '')}
 Summary: {resume_data.get('summary', '')}
 
-Skills: {', '.join(resume_data.get('skills', []))}
+Skills: {', '.join(skills_strings) if skills_strings else 'None'}
 
 Experiences:
 """

@@ -84,6 +84,46 @@ async def create_resume_from_form(resume_data: ResumeCreateRequest = Body(...)):
         generated_resume["github"] = resume_data.github or ""
         generated_resume["website"] = resume_data.website or ""
         
+        # CRITICAL: Always ensure projects, certifications, and languages are present as lists
+        # Initialize them first
+        generated_resume["projects"] = []
+        generated_resume["certifications"] = []
+        generated_resume["languages"] = []
+        
+        # Preserve projects, certifications, and languages from form data
+        # Always use original data - AI might not include these or might format them differently
+        if resume_data.projects and len(resume_data.projects) > 0:
+            # Convert Pydantic models to dicts
+            projects_list = []
+            for proj in resume_data.projects:
+                if hasattr(proj, 'model_dump'):
+                    projects_list.append(proj.model_dump())
+                elif hasattr(proj, 'dict'):
+                    projects_list.append(proj.dict())
+                elif isinstance(proj, dict):
+                    projects_list.append(proj)
+                else:
+                    projects_list.append({"name": str(proj), "description": ""})
+            generated_resume["projects"] = projects_list
+        
+        if resume_data.certifications and len(resume_data.certifications) > 0:
+            # Preserve original certifications (they're already strings or can be converted)
+            generated_resume["certifications"] = resume_data.certifications
+        # If empty, keep as empty list (already initialized above)
+        
+        if resume_data.languages and len(resume_data.languages) > 0:
+            # Preserve original languages (they're already strings or can be converted)
+            generated_resume["languages"] = resume_data.languages
+        # If empty, keep as empty list (already initialized above)
+        
+        # Final safety check - ensure they're always lists
+        if not isinstance(generated_resume.get("projects"), list):
+            generated_resume["projects"] = []
+        if not isinstance(generated_resume.get("certifications"), list):
+            generated_resume["certifications"] = []
+        if not isinstance(generated_resume.get("languages"), list):
+            generated_resume["languages"] = []
+        
         # Build raw text for storage
         raw_text_parts = [f"Name: {resume_data.name}"]
         if resume_data.email:
@@ -178,7 +218,10 @@ async def upload_resume(
 async def improve_resume(request: ImproveResumeRequest = Body(...)):
     """
     Improve resume using AI.
-    Accepts JSON body: {"resume_id": "uuid-string"}
+    Accepts JSON body with resume_id and optional full resume data for better context.
+    
+    Note: This endpoint only accepts fields defined in ImproveResumeRequest schema.
+    Fields like 'message', 'status', 'version' from create/upload responses should NOT be included.
     """
     import logging
     logger = logging.getLogger(__name__)
@@ -195,16 +238,220 @@ async def improve_resume(request: ImproveResumeRequest = Body(...)):
                 detail=f"Invalid resume ID format. Expected UUID, got: '{resume_id}'. Please use a valid resume ID."
             )
         
-        # Get resume from database
+        # Build resume data - use provided data if available, otherwise fetch from database
+        resume_data = {}
+        
+        # Check if frontend provided full resume data
+        has_provided_data = any([
+            request.name,
+            request.email,
+            request.summary,
+            request.experiences,
+            request.education,
+            request.skills
+        ])
+        
+        # Always check if resume exists in database (required for foreign key constraint)
         resume = supabase_client.get_resume(resume_id)
         if not resume:
-            raise HTTPException(status_code=404, detail="Resume not found")
+            # If resume doesn't exist but we have full data, create it
+            if has_provided_data:
+                logger.info(f"Resume {resume_id} not found, creating it with provided data")
+                # Build raw text from provided data
+                raw_text_parts = []
+                if request.name:
+                    raw_text_parts.append(f"Name: {request.name}")
+                if request.email:
+                    raw_text_parts.append(f"Email: {request.email}")
+                if request.summary:
+                    raw_text_parts.append(f"\nSummary: {request.summary}")
+                raw_text = "\n".join(raw_text_parts) if raw_text_parts else "Resume created from form data"
+                
+                # Create resume in database
+                created_id = supabase_client.save_resume_raw(raw_text)
+                if created_id != resume_id:
+                    logger.warning(f"Created resume with different ID: {created_id} (expected: {resume_id})")
+                    # Update resume_id to match what was actually created
+                    resume_id = created_id
+            else:
+                raise HTTPException(
+                    status_code=404, 
+                    detail=f"Resume not found. Resume ID '{resume_id}' does not exist in the database. Please create the resume first using /api/v1/resumes/create or /api/v1/resumes/upload."
+                )
         
-        # Improve with AI
-        improved = await langchain_ai.improve_resume(resume)
+        # Get existing resume data from database first (to preserve projects/certifications/languages)
+        existing_resume_data = {}
+        resume = supabase_client.get_resume(resume_id)
+        if resume:
+            version = supabase_client.get_latest_resume_version(resume_id, "latest")
+            if version and version.get("content"):
+                content = version.get("content")
+                if isinstance(content, str):
+                    content = json.loads(content)
+                existing_resume_data = content
+        
+        if has_provided_data:
+            # Use provided data from frontend (more accurate and up-to-date)
+            logger.info("Using provided resume data from frontend")
+            
+            # Convert experiences to dicts (handle both Pydantic models and dicts)
+            experiences_list = []
+            for exp in (request.experiences or []):
+                if isinstance(exp, dict):
+                    experiences_list.append(exp)
+                elif hasattr(exp, 'model_dump'):  # Pydantic v2
+                    experiences_list.append(exp.model_dump())
+                elif hasattr(exp, 'dict'):  # Pydantic v1
+                    experiences_list.append(exp.dict())
+                else:
+                    experiences_list.append(exp)
+            
+            # Convert education to dicts (handle both Pydantic models and dicts)
+            education_list = []
+            for edu in (request.education or []):
+                if isinstance(edu, dict):
+                    education_list.append(edu)
+                elif hasattr(edu, 'model_dump'):  # Pydantic v2
+                    education_list.append(edu.model_dump())
+                elif hasattr(edu, 'dict'):  # Pydantic v1
+                    education_list.append(edu.dict())
+                else:
+                    education_list.append(edu)
+            
+            # CRITICAL FIX: Use provided data, but fallback to existing data for projects/certifications/languages
+            # if they're not provided or are empty in the request
+            projects = request.projects if (request.projects and len(request.projects) > 0) else (existing_resume_data.get('projects') or [])
+            certifications = request.certifications if (request.certifications and len(request.certifications) > 0) else (existing_resume_data.get('certifications') or [])
+            languages = request.languages if (request.languages and len(request.languages) > 0) else (existing_resume_data.get('languages') or [])
+            
+            resume_data = {
+                "name": request.name or "",
+                "email": request.email or "",
+                "phone": request.phone or "",
+                "linkedin": request.linkedin or "",
+                "github": request.github or "",
+                "website": request.website or "",
+                "summary": request.summary or "",
+                "experiences": experiences_list,
+                "education": education_list,
+                "skills": request.skills or [],
+                "projects": projects,
+                "certifications": certifications,
+                "languages": languages
+            }
+            logger.info(f"Using projects from: {'request' if (request.projects and len(request.projects) > 0) else 'database'}")
+            logger.info(f"Projects count: {len(projects)}")
+        else:
+            # Fallback: Get resume from database
+            logger.info("No provided data, fetching from database")
+            resume = supabase_client.get_resume(resume_id)
+            if not resume:
+                raise HTTPException(status_code=404, detail="Resume not found")
+            
+            # Get latest version if available
+            version = supabase_client.get_latest_resume_version(resume_id, "latest")
+            if version and version.get("content"):
+                content = version.get("content")
+                if isinstance(content, str):
+                    content = json.loads(content)
+                resume_data = content
+            else:
+                # Use raw text as fallback
+                raw_text = resume.get("raw_text", "")
+                resume_data = {"raw_text": raw_text}
+        
+        # CRITICAL: Ensure projects, certifications, and languages are always present as lists
+        if 'projects' not in resume_data or resume_data.get('projects') is None:
+            resume_data['projects'] = []
+        if 'certifications' not in resume_data or resume_data.get('certifications') is None:
+            resume_data['certifications'] = []
+        if 'languages' not in resume_data or resume_data.get('languages') is None:
+            resume_data['languages'] = []
+        
+        # Ensure they're lists
+        if not isinstance(resume_data.get('projects'), list):
+            resume_data['projects'] = []
+        if not isinstance(resume_data.get('certifications'), list):
+            resume_data['certifications'] = []
+        if not isinstance(resume_data.get('languages'), list):
+            resume_data['languages'] = []
+        
+        logger.info(f"Resume data before AI - projects: {resume_data.get('projects')}, certifications: {resume_data.get('certifications')}, languages: {resume_data.get('languages')}")
+        
+        # Validate resume_data is not empty
+        if not resume_data or (isinstance(resume_data, dict) and not any(resume_data.values())):
+            logger.error(f"Resume data is empty for resume_id: {resume_id}")
+            raise HTTPException(
+                status_code=400,
+                detail="Resume data is empty. Please provide resume data or ensure the resume exists in the database."
+            )
+        
+        logger.info(f"Resume data keys: {list(resume_data.keys()) if isinstance(resume_data, dict) else 'Not a dict'}")
+        
+        # Build improvement context
+        improvement_context = ""
+        if request.improvements and len(request.improvements) > 0:
+            improvement_context = f"\n\nSpecific improvements requested:\n" + "\n".join(f"- {imp}" for imp in request.improvements)
+        
+        tone_context = f"\n\nTone: {request.tone}" if request.tone and request.tone != "professional" else ""
+        
+        # Improve with AI using structured data
+        logger.info("Calling improve_resume_with_data...")
+        improved = await langchain_ai.improve_resume_with_data(
+            resume_data, 
+            improvement_context=improvement_context,
+            tone=request.tone or "professional"
+        )
+        logger.info("AI improvement completed successfully")
+        
+        # CRITICAL FIX: Before saving, ALWAYS preserve projects/certifications/languages from original
+        # Don't trust AI response - always use original data if it exists
+        original_projects = resume_data.get('projects', [])
+        original_certs = resume_data.get('certifications', [])
+        original_langs = resume_data.get('languages', [])
+        
+        logger.info(f"Original data - projects: {len(original_projects)}, certifications: {len(original_certs)}, languages: {len(original_langs)}")
+        logger.info(f"Improved data before fix - projects: {len(improved.get('projects', []))}, certifications: {len(improved.get('certifications', []))}, languages: {len(improved.get('languages', []))}")
+        
+        # ALWAYS use original data if it has content, regardless of what AI returned
+        if original_projects and len(original_projects) > 0:
+            logger.info(f"FORCING projects from original: {len(original_projects)} items")
+            improved['projects'] = original_projects
+        elif not improved.get('projects') or len(improved.get('projects', [])) == 0:
+            improved['projects'] = []
+        
+        if original_certs and len(original_certs) > 0:
+            logger.info(f"FORCING certifications from original: {len(original_certs)} items")
+            improved['certifications'] = original_certs
+        elif not improved.get('certifications') or len(improved.get('certifications', [])) == 0:
+            improved['certifications'] = []
+        
+        if original_langs and len(original_langs) > 0:
+            logger.info(f"FORCING languages from original: {len(original_langs)} items")
+            improved['languages'] = original_langs
+        elif not improved.get('languages') or len(improved.get('languages', [])) == 0:
+            improved['languages'] = []
+        
+        # CRITICAL: Ensure projects, certifications, and languages are always lists before saving
+        if 'projects' not in improved or not isinstance(improved.get('projects'), list):
+            improved['projects'] = improved.get('projects', []) or []
+        if 'certifications' not in improved or not isinstance(improved.get('certifications'), list):
+            improved['certifications'] = improved.get('certifications', []) or []
+        if 'languages' not in improved or not isinstance(improved.get('languages'), list):
+            improved['languages'] = improved.get('languages', []) or []
+        
+        # Final safety check
+        if not isinstance(improved.get('projects'), list):
+            improved['projects'] = []
+        if not isinstance(improved.get('certifications'), list):
+            improved['certifications'] = []
+        if not isinstance(improved.get('languages'), list):
+            improved['languages'] = []
+        
+        logger.info(f"Final data before saving - projects: {len(improved.get('projects', []))}, certifications: {len(improved.get('certifications', []))}, languages: {len(improved.get('languages', []))}")
         
         # Save improved version
-        supabase_client.save_resume_version(resume_id, improved)
+        supabase_client.save_resume_version(resume_id, improved, version_type="improved")
         
         return {
             "resume_id": resume_id,
@@ -214,7 +461,14 @@ async def improve_resume(request: ImproveResumeRequest = Body(...)):
     except HTTPException:
         raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error improving resume: {str(e)}")
+        import traceback
+        error_traceback = traceback.format_exc()
+        logger.error(f"Error improving resume: {str(e)}")
+        logger.error(f"Traceback: {error_traceback}")
+        raise HTTPException(
+            status_code=500, 
+            detail=f"Error improving resume: {str(e)}"
+        )
 
 @router.post("/tailor")
 async def tailor_resume(request: TailorResumeRequest = Body(...)):
@@ -222,6 +476,9 @@ async def tailor_resume(request: TailorResumeRequest = Body(...)):
     Tailor resume for a specific job description.
     Accepts JSON body: {"resume_id": "uuid-string", "job_description": "string"}
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
         resume_id = request.resume_id
         job_description = request.job_description
@@ -240,8 +497,91 @@ async def tailor_resume(request: TailorResumeRequest = Body(...)):
         if not resume:
             raise HTTPException(status_code=404, detail="Resume not found")
         
-        # Tailor with AI
-        tailored = await langchain_ai.tailor_resume(resume, job_description)
+        # CRITICAL FIX: Get latest version with structured data (to preserve projects/certifications/languages)
+        resume_data = {}
+        version = supabase_client.get_latest_resume_version(resume_id, "latest")
+        if version and version.get("content"):
+            content = version.get("content")
+            if isinstance(content, str):
+                content = json.loads(content)
+            resume_data = content
+            logger.info("Using structured data from latest version for tailoring")
+            logger.info(f"Retrieved data keys: {list(resume_data.keys())}")
+            logger.info(f"Retrieved projects: {resume_data.get('projects', [])}")
+            logger.info(f"Retrieved certifications: {resume_data.get('certifications', [])}")
+            logger.info(f"Retrieved languages: {resume_data.get('languages', [])}")
+        else:
+            # Fallback to raw text
+            raw_text = resume.get("raw_text", "")
+            resume_data = {"raw_text": raw_text}
+            logger.info("Using raw text for tailoring (no structured version found)")
+        
+        # CRITICAL: Ensure projects, certifications, and languages are always present as lists
+        if 'projects' not in resume_data or resume_data.get('projects') is None:
+            resume_data['projects'] = []
+        if 'certifications' not in resume_data or resume_data.get('certifications') is None:
+            resume_data['certifications'] = []
+        if 'languages' not in resume_data or resume_data.get('languages') is None:
+            resume_data['languages'] = []
+        
+        # Ensure they're lists
+        if not isinstance(resume_data.get('projects'), list):
+            resume_data['projects'] = []
+        if not isinstance(resume_data.get('certifications'), list):
+            resume_data['certifications'] = []
+        if not isinstance(resume_data.get('languages'), list):
+            resume_data['languages'] = []
+        
+        logger.info(f"Resume data before tailoring - projects: {len(resume_data.get('projects', []))}, certifications: {len(resume_data.get('certifications', []))}, languages: {len(resume_data.get('languages', []))}")
+        
+        # Tailor with AI using structured data
+        tailored = await langchain_ai.tailor_resume_with_data(resume_data, job_description)
+        
+        # CRITICAL FIX: Before saving, ALWAYS preserve projects/certifications/languages from original
+        # Don't trust AI response - always use original data if it exists
+        original_projects = resume_data.get('projects', [])
+        original_certs = resume_data.get('certifications', [])
+        original_langs = resume_data.get('languages', [])
+        
+        logger.info(f"Original data - projects: {len(original_projects)}, certifications: {len(original_certs)}, languages: {len(original_langs)}")
+        logger.info(f"Tailored data before fix - projects: {len(tailored.get('projects', []))}, certifications: {len(tailored.get('certifications', []))}, languages: {len(tailored.get('languages', []))}")
+        
+        # ALWAYS use original data if it has content, regardless of what AI returned
+        if original_projects and len(original_projects) > 0:
+            logger.info(f"FORCING projects from original: {len(original_projects)} items")
+            tailored['projects'] = original_projects
+        elif not tailored.get('projects') or len(tailored.get('projects', [])) == 0:
+            tailored['projects'] = []
+        
+        if original_certs and len(original_certs) > 0:
+            logger.info(f"FORCING certifications from original: {len(original_certs)} items")
+            tailored['certifications'] = original_certs
+        elif not tailored.get('certifications') or len(tailored.get('certifications', [])) == 0:
+            tailored['certifications'] = []
+        
+        if original_langs and len(original_langs) > 0:
+            logger.info(f"FORCING languages from original: {len(original_langs)} items")
+            tailored['languages'] = original_langs
+        elif not tailored.get('languages') or len(tailored.get('languages', [])) == 0:
+            tailored['languages'] = []
+        
+        # CRITICAL: Ensure projects, certifications, and languages are always lists before saving
+        if 'projects' not in tailored or not isinstance(tailored.get('projects'), list):
+            tailored['projects'] = tailored.get('projects', []) or []
+        if 'certifications' not in tailored or not isinstance(tailored.get('certifications'), list):
+            tailored['certifications'] = tailored.get('certifications', []) or []
+        if 'languages' not in tailored or not isinstance(tailored.get('languages'), list):
+            tailored['languages'] = tailored.get('languages', []) or []
+        
+        # Final safety check
+        if not isinstance(tailored.get('projects'), list):
+            tailored['projects'] = []
+        if not isinstance(tailored.get('certifications'), list):
+            tailored['certifications'] = []
+        if not isinstance(tailored.get('languages'), list):
+            tailored['languages'] = []
+        
+        logger.info(f"Final data before saving - projects: {len(tailored.get('projects', []))}, certifications: {len(tailored.get('certifications', []))}, languages: {len(tailored.get('languages', []))}")
         
         # Save tailored version
         supabase_client.save_resume_version(resume_id, tailored, version_type="tailored")
@@ -254,6 +594,10 @@ async def tailor_resume(request: TailorResumeRequest = Body(...)):
     except HTTPException:
         raise
     except Exception as e:
+        import traceback
+        error_traceback = traceback.format_exc()
+        logger.error(f"Error tailoring resume: {str(e)}")
+        logger.error(f"Traceback: {error_traceback}")
         raise HTTPException(status_code=500, detail=f"Error tailoring resume: {str(e)}")
 
 @router.get("/templates")
@@ -451,7 +795,30 @@ async def export_resume(
                 detail="Resume content is empty"
             )
         
+        # CRITICAL FIX: Ensure projects, certifications, and languages are always lists
+        # Even if they're None or missing, set them to empty lists to avoid issues
+        if 'projects' not in content or content.get('projects') is None:
+            content['projects'] = []
+        if 'certifications' not in content or content.get('certifications') is None:
+            content['certifications'] = []
+        if 'languages' not in content or content.get('languages') is None:
+            content['languages'] = []
+        
+        # Ensure they're actually lists (not strings or other types)
+        if not isinstance(content.get('projects'), list):
+            content['projects'] = []
+        if not isinstance(content.get('certifications'), list):
+            content['certifications'] = []
+        if not isinstance(content.get('languages'), list):
+            content['languages'] = []
+        
         logger.info(f"Content keys: {list(content.keys())}")
+        logger.info(f"Content has projects: {bool(content.get('projects'))}")
+        logger.info(f"Content has certifications: {bool(content.get('certifications'))}")
+        logger.info(f"Content has languages: {bool(content.get('languages'))}")
+        logger.info(f"Projects: {content.get('projects')}")
+        logger.info(f"Certifications: {content.get('certifications')}")
+        logger.info(f"Languages: {content.get('languages')}")
         logger.info(f"Using template: {template}")
         
         # Generate PDF with selected template
@@ -553,7 +920,8 @@ async def calculate_ats_score_endpoint(request: AtsScoreRequest = Body(...)):
         raise HTTPException(status_code=500, detail=f"Error calculating ATS score: {str(e)}")
 
 # Explicit GET handlers for action endpoints to prevent catch-all route from matching
-@router.get("/improve")
+# These are hidden from Swagger UI since they're just error handlers
+@router.get("/improve", include_in_schema=False)
 async def get_improve_not_allowed():
     """Prevent GET requests to improve endpoint."""
     raise HTTPException(
@@ -561,7 +929,7 @@ async def get_improve_not_allowed():
         detail="Method not allowed. 'improve' is an action endpoint. Use POST /api/v1/resumes/improve instead of GET."
     )
 
-@router.get("/tailor")
+@router.get("/tailor", include_in_schema=False)
 async def get_tailor_not_allowed():
     """Prevent GET requests to tailor endpoint."""
     raise HTTPException(
@@ -569,7 +937,7 @@ async def get_tailor_not_allowed():
         detail="Method not allowed. 'tailor' is an action endpoint. Use POST /api/v1/resumes/tailor instead of GET."
     )
 
-@router.get("/upload")
+@router.get("/upload", include_in_schema=False)
 async def get_upload_not_allowed():
     """Prevent GET requests to upload endpoint."""
     raise HTTPException(
@@ -577,7 +945,7 @@ async def get_upload_not_allowed():
         detail="Method not allowed. 'upload' is an action endpoint. Use POST /api/v1/resumes/upload instead of GET."
     )
 
-@router.get("/create")
+@router.get("/create", include_in_schema=False)
 async def get_create_not_allowed():
     """Prevent GET requests to create endpoint."""
     raise HTTPException(
@@ -585,7 +953,7 @@ async def get_create_not_allowed():
         detail="Method not allowed. 'create' is an action endpoint. Use POST /api/v1/resumes/create instead of GET."
     )
 
-@router.get("/ats-score")
+@router.get("/ats-score", include_in_schema=False)
 async def get_ats_score_not_allowed():
     """Prevent GET requests to ats-score endpoint."""
     raise HTTPException(

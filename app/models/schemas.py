@@ -52,6 +52,26 @@ class ResumeCreateRequest(BaseModel):
 
 class ImproveResumeRequest(BaseModel):
     resume_id: str
+    tone: Optional[str] = "professional"
+    improvements: Optional[List[str]] = []
+    # Optional: Full resume data for better AI context
+    name: Optional[str] = None
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    linkedin: Optional[str] = None
+    github: Optional[str] = None
+    website: Optional[str] = None
+    summary: Optional[str] = None
+    experiences: Optional[List[ExperienceItem]] = []
+    education: Optional[List[EducationItem]] = []
+    skills: Optional[List[str]] = []
+    projects: Optional[List[dict]] = []
+    certifications: Optional[List[str]] = []
+    languages: Optional[List[str]] = []
+    
+    class Config:
+        # Ignore extra fields that might come from create/upload responses
+        extra = "ignore"
 
 class TailorResumeRequest(BaseModel):
     resume_id: str
