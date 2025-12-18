@@ -123,7 +123,8 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
 # Configure CORS with preview frontend URL
 allowed_origins = [
    # "https://supabase-skillcapital-lms-git-2c784d-tech-kdigitalais-projects.vercel.app",  
-   "https://dev.my.skillcapital.ai",# Preview frontend URL
+   "https://dev.my.skillcapital.ai",
+   "https://dev.enterprise.kdigital.ai",  # Second project frontend Ureview frontend URL
     FRONTEND_URL,  # From environment variable (for future production URL)
     "http://localhost:3000",  # Local development
     "http://127.0.0.1:3000",  # Alternative localhost
