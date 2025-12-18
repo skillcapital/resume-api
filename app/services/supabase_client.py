@@ -1,31 +1,37 @@
 from app.core.config import get_supabase_client, SUPABASE_BUCKET_EXPORTS
+import random
 import uuid
 import time
 from typing import Dict, Any, Optional
 from datetime import datetime
 
-def _get_supabase():
-    """Get Supabase client with lazy initialization."""
-    return get_supabase_client()
+def _get_supabase(force_new: bool = False):
+    """Get Supabase client with lazy initialization.
+    
+    Args:
+        force_new: If True, create a new client even if one exists (useful for retries)
+    """
+    return get_supabase_client(force_new=force_new)
 
-def save_resume_raw(text: str, max_retries: int = 3) -> str:
+def save_resume_raw(text: str, max_retries: int = 5) -> str:
     """
     Save raw resume text to database.
-    Uses retry logic to handle transient connection/resource errors.
+    Uses retry logic with connection recreation to handle transient connection/resource errors.
     
     Args:
         text: Raw resume text to save
-        max_retries: Maximum number of retry attempts
+        max_retries: Maximum number of retry attempts (increased to 5 for better reliability)
     """
-    supabase = _get_supabase()
-    if not supabase:
-        raise Exception("Supabase client not initialized. Check your .env file.")
-    
     resume_id = str(uuid.uuid4())
     
     last_exception = None
     for attempt in range(max_retries):
         try:
+            # Get fresh Supabase client on each retry to avoid stale connections
+            supabase = get_supabase_client(force_new=(attempt > 0))
+            if not supabase:
+                raise Exception("Supabase client not initialized. Check your .env file.")
+            
             result = supabase.table("resumes").insert({
                 "id": resume_id,
                 "raw_text": text,
@@ -37,11 +43,25 @@ def save_resume_raw(text: str, max_retries: int = 3) -> str:
             last_exception = e
             error_msg = str(e).lower()
             
-            # Check if it's a retryable error (resource busy, connection issue, etc.)
-            if any(keyword in error_msg for keyword in ["busy", "locked", "resource", "errno 16", "connection", "timeout", "temporary"]):
+            # Expanded list of retryable errors
+            retryable_keywords = [
+                "busy", "locked", "resource", "errno 16", "errno 11", 
+                "connection", "timeout", "temporary", "network", 
+                "socket", "broken pipe", "connection reset", 
+                "too many connections", "connection pool", "429",  # Rate limit
+                "503", "502", "504"  # Server errors
+            ]
+            
+            # Check if it's a retryable error
+            is_retryable = any(keyword in error_msg for keyword in retryable_keywords)
+            
+            if is_retryable:
                 if attempt < max_retries - 1:
-                    # Wait with exponential backoff before retrying
-                    wait_time = 0.1 * (2 ** attempt)
+                    # Exponential backoff with jitter: 0.2s, 0.4s, 0.8s, 1.6s, 3.2s
+                    base_wait = 0.2 * (2 ** attempt)
+                    # Add small random jitter to avoid thundering herd
+                    jitter = random.uniform(0, 0.1 * (attempt + 1))
+                    wait_time = base_wait + jitter
                     time.sleep(wait_time)
                     continue
                 else:
@@ -54,28 +74,24 @@ def save_resume_raw(text: str, max_retries: int = 3) -> str:
     # If we get here, all retries failed
     raise Exception(f"Error saving resume after {max_retries} attempts: {str(last_exception)}")
 
-def save_resume_version(resume_id: str, content: Dict[str, Any], version_type: str = "improved", max_retries: int = 3) -> None:
+def save_resume_version(resume_id: str, content: Dict[str, Any], version_type: str = "improved", max_retries: int = 5) -> None:
     """
     Save a resume version (improved or tailored) to database.
-    Uses retry logic to handle transient connection/resource errors.
+    Uses retry logic with connection recreation to handle transient connection/resource errors.
     
     Args:
         resume_id: UUID of the resume
         content: Resume version content dictionary
         version_type: Type of version (improved, tailored, etc.)
-        max_retries: Maximum number of retry attempts
+        max_retries: Maximum number of retry attempts (increased to 5 for better reliability)
     """
-    supabase = _get_supabase()
-    if not supabase:
-        raise Exception("Supabase client not initialized. Check your .env file.")
-    
     # Validate UUID format
     try:
         uuid.UUID(resume_id)
     except (ValueError, TypeError):
         raise Exception(f"Invalid resume ID format: '{resume_id}'. Resume ID must be a valid UUID.")
     
-    # Check if resume exists before saving version
+    # Check if resume exists before saving version (only on first attempt to avoid repeated checks)
     resume = get_resume(resume_id)
     if not resume:
         raise Exception(f"Resume not found. Resume ID '{resume_id}' does not exist in the database. Please create the resume first using /api/v1/resumes/create or /api/v1/resumes/upload.")
@@ -83,6 +99,11 @@ def save_resume_version(resume_id: str, content: Dict[str, Any], version_type: s
     last_exception = None
     for attempt in range(max_retries):
         try:
+            # Get fresh Supabase client on each retry to avoid stale connections
+            supabase = get_supabase_client(force_new=(attempt > 0))
+            if not supabase:
+                raise Exception("Supabase client not initialized. Check your .env file.")
+            
             supabase.table("resume_versions").insert({
                 "resume_id": resume_id,
                 "content": content,
@@ -98,11 +119,25 @@ def save_resume_version(resume_id: str, content: Dict[str, Any], version_type: s
             if "foreign key constraint" in error_msg or "23503" in error_msg:
                 raise Exception(f"Resume not found. Resume ID '{resume_id}' does not exist in the database. Please create the resume first using /api/v1/resumes/create or /api/v1/resumes/upload.")
             
-            # Check if it's a retryable error (resource busy, connection issue, etc.)
-            if any(keyword in error_msg for keyword in ["busy", "locked", "resource", "errno 16", "connection", "timeout", "temporary"]):
+            # Expanded list of retryable errors
+            retryable_keywords = [
+                "busy", "locked", "resource", "errno 16", "errno 11", 
+                "connection", "timeout", "temporary", "network", 
+                "socket", "broken pipe", "connection reset", 
+                "too many connections", "connection pool", "429",  # Rate limit
+                "503", "502", "504"  # Server errors
+            ]
+            
+            # Check if it's a retryable error
+            is_retryable = any(keyword in error_msg for keyword in retryable_keywords)
+            
+            if is_retryable:
                 if attempt < max_retries - 1:
-                    # Wait with exponential backoff before retrying
-                    wait_time = 0.1 * (2 ** attempt)
+                    # Exponential backoff with jitter: 0.2s, 0.4s, 0.8s, 1.6s, 3.2s
+                    base_wait = 0.2 * (2 ** attempt)
+                    # Add small random jitter to avoid thundering herd
+                    jitter = random.uniform(0, 0.1 * (attempt + 1))
+                    wait_time = base_wait + jitter
                     time.sleep(wait_time)
                     continue
                 else:

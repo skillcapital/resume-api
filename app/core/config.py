@@ -27,33 +27,43 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 supabase: Optional[Client] = None
 _supabase_initialized = False
 
-def get_supabase_client():
+def get_supabase_client(force_new: bool = False):
     """
     Lazy initialization of Supabase client.
     Only creates client when first accessed, not at import time.
     This reduces cold start time on Vercel.
+    
+    Args:
+        force_new: If True, create a new client even if one exists (useful for retries)
     """
     global supabase, _supabase_initialized
     
-    # Return existing client if already initialized
-    if _supabase_initialized:
+    # Return existing client if already initialized and not forcing new
+    if _supabase_initialized and supabase is not None and not force_new:
         return supabase
     
     # Initialize only if available and credentials are set
     if SUPABASE_AVAILABLE and SUPABASE_URL and SUPABASE_KEY:
         try:
+            # Create new client (will overwrite existing if force_new=True)
             supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
             _supabase_initialized = True
             return supabase
         except Exception as e:
             # Log error but don't crash
             import sys
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.warning(f"Failed to initialize Supabase client: {str(e)}")
             print(f"Warning: Failed to initialize Supabase client: {str(e)}", file=sys.stderr)
-            _supabase_initialized = True  # Mark as attempted to avoid retries
-            supabase = None
+            # Don't mark as initialized if it failed - allow retry
+            if not force_new:
+                _supabase_initialized = True
+                supabase = None
             return None
     
-    _supabase_initialized = True
+    if not force_new:
+        _supabase_initialized = True
     return None
 
 # For backward compatibility - initialize on first access
