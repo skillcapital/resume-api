@@ -18,9 +18,32 @@ except ImportError:
     Client = None
 
 # Environment variables
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+SUPABASE_URL = os.getenv("SUPABASE_URL", "").strip()
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "").strip()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "").strip()
+
+# Validate Supabase URL format
+def validate_supabase_url(url: str):
+    """
+    Validate Supabase URL format.
+    Returns (is_valid, error_message)
+    """
+    if not url:
+        return False, "SUPABASE_URL is not set in environment variables"
+    
+    # Check if it starts with http:// or https://
+    if not url.startswith(("http://", "https://")):
+        return False, f"SUPABASE_URL must start with http:// or https://. Got: {url[:20]}..."
+    
+    # Check if it contains .supabase.co
+    if ".supabase.co" not in url:
+        return False, f"SUPABASE_URL should contain '.supabase.co'. Got: {url[:50]}..."
+    
+    # Check for common issues
+    if " " in url:
+        return False, "SUPABASE_URL contains spaces. Remove any spaces."
+    
+    return True, ""
 
 # Supabase client - lazy initialization to reduce cold start time
 # Don't create client at import time, only when needed
@@ -42,6 +65,17 @@ def get_supabase_client(force_new: bool = False):
     if _supabase_initialized and supabase is not None and not force_new:
         return supabase
     
+    # Validate URL format first
+    if SUPABASE_URL:
+        is_valid, error_msg = validate_supabase_url(SUPABASE_URL)
+        if not is_valid:
+            import logging
+            logger = logging.getLogger(__name__)
+            logger.error(f"Invalid Supabase URL: {error_msg}")
+            if not force_new:
+                _supabase_initialized = True
+            return None
+    
     # Initialize only if available and credentials are set
     if SUPABASE_AVAILABLE and SUPABASE_URL and SUPABASE_KEY:
         try:
@@ -50,12 +84,23 @@ def get_supabase_client(force_new: bool = False):
             _supabase_initialized = True
             return supabase
         except Exception as e:
-            # Log error but don't crash
+            # Log error with more details
             import sys
             import logging
             logger = logging.getLogger(__name__)
-            logger.warning(f"Failed to initialize Supabase client: {str(e)}")
-            print(f"Warning: Failed to initialize Supabase client: {str(e)}", file=sys.stderr)
+            error_str = str(e).lower()
+            
+            # Provide specific error messages for common issues
+            if "getaddrinfo" in error_str or "errno 11001" in error_str or "dns" in error_str:
+                error_detail = f"DNS resolution failed. Cannot resolve Supabase URL: {SUPABASE_URL[:50]}... Check your SUPABASE_URL in .env file. Error: {str(e)}"
+            elif "connection" in error_str or "network" in error_str:
+                error_detail = f"Network connection failed. Check your internet connection and Supabase URL. Error: {str(e)}"
+            else:
+                error_detail = f"Failed to initialize Supabase client: {str(e)}"
+            
+            logger.error(error_detail)
+            print(f"ERROR: {error_detail}", file=sys.stderr)
+            
             # Don't mark as initialized if it failed - allow retry
             if not force_new:
                 _supabase_initialized = True

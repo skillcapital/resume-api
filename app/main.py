@@ -177,6 +177,97 @@ def root():
 def health_check():
     return {"status": "healthy"}
 
+@app.get("/health/supabase")
+def health_check_supabase():
+    """
+    Test Supabase connection and return detailed status.
+    """
+    import logging
+    from app.core.config import get_supabase_client, SUPABASE_URL, SUPABASE_KEY, validate_supabase_url
+    
+    logger = logging.getLogger(__name__)
+    status = {
+        "supabase_configured": False,
+        "url_valid": False,
+        "connection_test": False,
+        "error": None,
+        "details": {}
+    }
+    
+    # Check if URL is set
+    if not SUPABASE_URL:
+        status["error"] = "SUPABASE_URL is not set in environment variables"
+        return status
+    
+    status["supabase_configured"] = True
+    status["details"]["url_set"] = True
+    status["details"]["url_preview"] = SUPABASE_URL[:50] + "..." if len(SUPABASE_URL) > 50 else SUPABASE_URL
+    
+    # Validate URL format
+    is_valid, error_msg = validate_supabase_url(SUPABASE_URL)
+    status["url_valid"] = is_valid
+    if not is_valid:
+        status["error"] = error_msg
+        return status
+    
+    status["details"]["url_format"] = "valid"
+    
+    # Check if key is set
+    if not SUPABASE_KEY:
+        status["error"] = "SUPABASE_SERVICE_KEY is not set in environment variables"
+        return status
+    
+    status["details"]["key_set"] = True
+    status["details"]["key_length"] = len(SUPABASE_KEY)
+    
+    # Test connection
+    try:
+        supabase = get_supabase_client()
+        if not supabase:
+            status["error"] = "Failed to create Supabase client. Check logs for details."
+            return status
+        
+        # Try a simple query to test connection
+        result = supabase.table("resumes").select("id").limit(1).execute()
+        status["connection_test"] = True
+        status["details"]["connection"] = "success"
+        status["details"]["test_query"] = "passed"
+        
+    except Exception as e:
+        error_str = str(e).lower()
+        status["connection_test"] = False
+        
+        if "getaddrinfo" in error_str or "errno 11001" in error_str or "dns" in error_str:
+            status["error"] = f"DNS resolution failed. Cannot resolve hostname: {SUPABASE_URL[:50]}..."
+            status["details"]["error_type"] = "DNS_ERROR"
+            status["details"]["troubleshooting"] = {
+                "possible_causes": [
+                    "Supabase project might be paused (free tier projects pause after inactivity)",
+                    "Supabase project might be deleted",
+                    "Incorrect project ID in SUPABASE_URL",
+                    "Network/DNS configuration issue",
+                    "Firewall or proxy blocking DNS resolution"
+                ],
+                "solutions": [
+                    "Check Supabase Dashboard: https://supabase.com/dashboard",
+                    "Verify project is active (not paused)",
+                    "Confirm project ID matches your Supabase project",
+                    "Try accessing the URL in browser: " + SUPABASE_URL,
+                    "Check Windows DNS settings or try different DNS (8.8.8.8)",
+                    "Flush DNS cache: ipconfig /flushdns (Windows)"
+                ]
+            }
+        elif "connection" in error_str or "network" in error_str:
+            status["error"] = f"Network connection failed: {str(e)}"
+            status["details"]["error_type"] = "NETWORK_ERROR"
+        else:
+            status["error"] = f"Connection test failed: {str(e)}"
+            status["details"]["error_type"] = "UNKNOWN_ERROR"
+        
+        logger.error(f"Supabase connection test failed: {str(e)}")
+    
+    return status
+
 @app.post("/debug/json-test")
 async def debug_json_test(request: Request):
     """

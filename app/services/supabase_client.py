@@ -43,13 +43,15 @@ def save_resume_raw(text: str, max_retries: int = 5) -> str:
             last_exception = e
             error_msg = str(e).lower()
             
-            # Expanded list of retryable errors
+            # Expanded list of retryable errors (including DNS/network errors)
             retryable_keywords = [
                 "busy", "locked", "resource", "errno 16", "errno 11", 
                 "connection", "timeout", "temporary", "network", 
                 "socket", "broken pipe", "connection reset", 
                 "too many connections", "connection pool", "429",  # Rate limit
-                "503", "502", "504"  # Server errors
+                "503", "502", "504",  # Server errors
+                "getaddrinfo", "dns", "name resolution", "errno 11001",  # DNS errors
+                "connecterror", "network unreachable"  # Network errors
             ]
             
             # Check if it's a retryable error
@@ -119,13 +121,15 @@ def save_resume_version(resume_id: str, content: Dict[str, Any], version_type: s
             if "foreign key constraint" in error_msg or "23503" in error_msg:
                 raise Exception(f"Resume not found. Resume ID '{resume_id}' does not exist in the database. Please create the resume first using /api/v1/resumes/create or /api/v1/resumes/upload.")
             
-            # Expanded list of retryable errors
+            # Expanded list of retryable errors (including DNS/network errors)
             retryable_keywords = [
                 "busy", "locked", "resource", "errno 16", "errno 11", 
                 "connection", "timeout", "temporary", "network", 
                 "socket", "broken pipe", "connection reset", 
                 "too many connections", "connection pool", "429",  # Rate limit
-                "503", "502", "504"  # Server errors
+                "503", "502", "504",  # Server errors
+                "getaddrinfo", "dns", "name resolution", "errno 11001",  # DNS errors
+                "connecterror", "network unreachable"  # Network errors
             ]
             
             # Check if it's a retryable error
