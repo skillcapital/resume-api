@@ -48,6 +48,10 @@ async def create_resume_from_form(resume_data: ResumeCreateRequest = Body(...)):
     """
     Create a resume from form data (no file upload needed) - ChatGPT style.
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.info("POST /create endpoint called")
+    
     try:
         # Convert to dict for AI processing
         personal_info = {
@@ -138,6 +142,7 @@ async def create_resume_from_form(resume_data: ResumeCreateRequest = Body(...)):
         version_type = "tailored" if resume_data.job_description else "improved"
         supabase_client.save_resume_version(resume_id, generated_resume, version_type=version_type)
         
+        logger.info(f"Resume created successfully with ID: {resume_id}")
         return {
             "resume_id": resume_id,
             "version": generated_resume,
@@ -145,7 +150,11 @@ async def create_resume_from_form(resume_data: ResumeCreateRequest = Body(...)):
             "message": "Resume created and generated with AI"
         }
         
+    except HTTPException:
+        # Re-raise HTTP exceptions as-is
+        raise
     except Exception as e:
+        logger.error(f"Error creating resume: {str(e)}", exc_info=True)
         raise HTTPException(status_code=500, detail=f"Error creating resume: {str(e)}")
 
 @router.post("/upload")
@@ -948,6 +957,9 @@ async def get_upload_not_allowed():
 @router.get("/create", include_in_schema=False)
 async def get_create_not_allowed():
     """Prevent GET requests to create endpoint."""
+    import logging
+    logger = logging.getLogger(__name__)
+    logger.warning("GET request received on /create endpoint - method not allowed")
     raise HTTPException(
         status_code=405,
         detail="Method not allowed. 'create' is an action endpoint. Use POST /api/v1/resumes/create instead of GET."
@@ -967,6 +979,13 @@ async def get_resume(resume_id: str = Path(..., description="Resume UUID")):
     Get resume by ID.
     """
     try:
+        # Prevent action endpoints from being matched as resume IDs
+        action_endpoints = ["create", "upload", "improve", "tailor", "ats-score", "templates", "export", "preview"]
+        if resume_id.lower() in action_endpoints:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Resume not found. '{resume_id}' is an action endpoint, not a resume ID. Use GET /api/v1/resumes/{{resume_id}} with a valid UUID."
+            )
         
         # Validate UUID format
         try:

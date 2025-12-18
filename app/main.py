@@ -140,6 +140,25 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add request logging middleware to debug routing issues
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    """Log all incoming requests for debugging."""
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    method = request.method
+    path = request.url.path
+    logger.info(f"Incoming request: {method} {path}")
+    
+    # Log headers that might affect routing
+    if "content-type" in request.headers:
+        logger.info(f"Content-Type: {request.headers.get('content-type')}")
+    
+    response = await call_next(request)
+    
+    logger.info(f"Response status: {response.status_code} for {method} {path}")
+    return response
 
 app.include_router(resume_router, prefix="/api/v1/resumes", tags=["resumes"])
 
